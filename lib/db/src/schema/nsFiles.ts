@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean, index, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, bigint, boolean, index, primaryKey } from "drizzle-orm/pg-core";
 
 export const allFilesTable = pgTable(
   "all_files",
@@ -20,7 +20,7 @@ export const recordAttachmentsTable = pgTable(
     recordStatus: text("record_status").notNull().default(""),
     fileId: text("file_id").notNull(),
     fileName: text("file_name").notNull(),
-    sizeBytes: integer("size_bytes").notNull().default(0),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
     fileType: text("file_type").notNull(),
     hasStub: boolean("has_stub").notNull().default(false),
   },

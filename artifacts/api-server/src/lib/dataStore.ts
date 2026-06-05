@@ -577,10 +577,26 @@ function streamParseAllFilesFromPath(filePath: string): Promise<AllFileRecord[]>
   });
 }
 
-function streamParseRecordAttachmentsFromPath(filePath: string): Promise<RecordAttachment[]> {
+function streamInsertRecordAttachmentsFromPath(filePath: string): Promise<number> {
+  const STREAM_BATCH = 2000;
   return new Promise((resolve, reject) => {
-    const records: RecordAttachment[] = [];
+    let batch: RecordAttachment[] = [];
+    let total = 0;
+    let chain = Promise.resolve();
+
     const rl = readline.createInterface({ input: fs.createReadStream(filePath), crlfDelay: Infinity });
+
+    const flush = (rows: RecordAttachment[]) => {
+      rl.pause();
+      chain = chain
+        .then(() => upsertRecordAttachments(rows))
+        .then(() => {
+          total += rows.length;
+          rl.resume();
+        })
+        .catch((err) => { rl.close(); reject(err); });
+    };
+
     rl.on("line", (line) => {
       const parts = line.split(",");
       if (parts.length < 9) return;
@@ -589,9 +605,27 @@ function streamParseRecordAttachmentsFromPath(filePath: string): Promise<RecordA
       const sizeBytes = parseInt(sizeBytesStr, 10) || 0;
       const norm = hasStubStr?.toLowerCase();
       const hasStub = norm === "true" || norm === "1" || norm === "yes";
-      records.push({ recordType, recordId, recordName, recordStatus: recordStatus ?? "", fileId, fileName, sizeBytes, fileType, hasStub });
+      batch.push({ recordType, recordId, recordName, recordStatus: recordStatus ?? "", fileId, fileName, sizeBytes, fileType, hasStub });
+      if (batch.length >= STREAM_BATCH) {
+        flush(batch);
+        batch = [];
+      }
     });
-    rl.on("close", () => resolve(records));
+
+    rl.on("close", () => {
+      const remaining = batch;
+      batch = [];
+      chain
+        .then(async () => {
+          if (remaining.length > 0) {
+            await upsertRecordAttachments(remaining);
+            total += remaining.length;
+          }
+          resolve(total);
+        })
+        .catch(reject);
+    });
+
     rl.on("error", reject);
   });
 }
@@ -629,9 +663,13 @@ export async function loadDataFromDisk(): Promise<void> {
 
   if (attachmentParts.length > 0) {
     logger.info({ parts: attachmentParts.length }, "Loading record-attachments from disk...");
-    const allParts = await Promise.all(attachmentParts.map(streamParseRecordAttachmentsFromPath));
-    const combined = allParts.flat();
-    await upsertRecordAttachments(combined);
-    logger.info({ count: combined.length }, "record-attachments upserted from disk");
+    await pool.query("TRUNCATE record_attachments");
+    let totalAttachments = 0;
+    for (const part of attachmentParts) {
+      const count = await streamInsertRecordAttachmentsFromPath(part);
+      totalAttachments += count;
+      logger.info({ file: path.basename(part), count }, "record-attachments part loaded");
+    }
+    logger.info({ count: totalAttachments }, "record-attachments loaded from disk");
   }
 }
