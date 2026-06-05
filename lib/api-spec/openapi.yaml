@@ -3,20 +3,23 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: NetSuite Record-File Viewer API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: data
+    description: File and record data operations
+  - name: netsuite
+    description: NetSuite connectivity
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +27,416 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /data/upload:
+    post:
+      operationId: uploadData
+      tags: [data]
+      summary: Upload CSV/pipe-delimited data files
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataUploadInput"
+      responses:
+        "200":
+          description: Upload accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataUploadResult"
+
+  /data/status:
+    get:
+      operationId: getDataStatus
+      tags: [data]
+      summary: Get status of loaded data
+      responses:
+        "200":
+          description: Current data status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataStatus"
+
+  /data/record-types:
+    get:
+      operationId: listRecordTypes
+      tags: [data]
+      summary: List all distinct record types
+      responses:
+        "200":
+          description: List of record types
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecordTypeSummary"
+
+  /data/records:
+    get:
+      operationId: listRecords
+      tags: [data]
+      summary: List records, optionally filtered by type
+      parameters:
+        - name: recordType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: stubStatus
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, has_stub, missing_stub]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of records with their file attachments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordListResponse"
+
+  /data/records/{recordId}/files:
+    get:
+      operationId: getRecordFiles
+      tags: [data]
+      summary: Get all files attached to a specific record
+      parameters:
+        - name: recordId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Files attached to the record
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AttachedFile"
+        "404":
+          description: Record not found
+
+  /data/files:
+    get:
+      operationId: listAllFiles
+      tags: [data]
+      summary: List all files with optional filters
+      parameters:
+        - name: folderId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: stubStatus
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, has_stub, missing_stub]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of files
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileListResponse"
+
+  /data/summary:
+    get:
+      operationId: getSummary
+      tags: [data]
+      summary: Get dashboard summary stats
+      responses:
+        "200":
+          description: Summary statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /data/stub-coverage:
+    get:
+      operationId: getStubCoverage
+      tags: [data]
+      summary: Get stub coverage breakdown by record type
+      responses:
+        "200":
+          description: Stub coverage by record type
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StubCoverageByType"
+
+  /netsuite/status:
+    get:
+      operationId: getNetsuiteStatus
+      tags: [netsuite]
+      summary: Check if NetSuite credentials are configured
+      responses:
+        "200":
+          description: NetSuite connection status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetsuiteStatus"
+
+  /netsuite/refresh-stubs:
+    post:
+      operationId: refreshStubStatus
+      tags: [netsuite]
+      summary: Refresh stub status from NetSuite for a record type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshStubInput"
+      responses:
+        "200":
+          description: Refresh result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshStubResult"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    DataUploadInput:
+      type: object
+      required: [type, content]
+      properties:
+        type:
+          type: string
+          enum: [all_files, record_attachments]
+        content:
+          type: string
+          description: Raw file content (CSV or pipe-delimited)
+
+    DataUploadResult:
+      type: object
+      required: [success, rowCount, type]
+      properties:
+        success:
+          type: boolean
+        rowCount:
+          type: integer
+        type:
+          type: string
+
+    DataStatus:
+      type: object
+      required: [allFilesLoaded, recordAttachmentsLoaded, allFilesCount, recordAttachmentsCount]
+      properties:
+        allFilesLoaded:
+          type: boolean
+        recordAttachmentsLoaded:
+          type: boolean
+        allFilesCount:
+          type: integer
+        recordAttachmentsCount:
+          type: integer
+
+    RecordTypeSummary:
+      type: object
+      required: [recordType, recordCount, fileCount, stubCount, missingStubCount]
+      properties:
+        recordType:
+          type: string
+        recordCount:
+          type: integer
+        fileCount:
+          type: integer
+        stubCount:
+          type: integer
+        missingStubCount:
+          type: integer
+
+    AttachedFile:
+      type: object
+      required: [fileId, fileName, fileType, sizeBytes, hasStub]
+      properties:
+        fileId:
+          type: string
+        fileName:
+          type: string
+        fileType:
+          type: string
+        sizeBytes:
+          type: integer
+        hasStub:
+          type: boolean
+        stubFileName:
+          type: ["string", "null"]
+        folderId:
+          type: ["string", "null"]
+        folderName:
+          type: ["string", "null"]
+
+    RecordItem:
+      type: object
+      required: [recordId, recordName, recordType, fileCount, stubCount, missingStubCount]
+      properties:
+        recordId:
+          type: string
+        recordName:
+          type: string
+        recordType:
+          type: string
+        fileCount:
+          type: integer
+        stubCount:
+          type: integer
+        missingStubCount:
+          type: integer
+
+    RecordListResponse:
+      type: object
+      required: [records, total]
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordItem"
+        total:
+          type: integer
+
+    FileItem:
+      type: object
+      required: [fileId, fileName, folderId, folderName, fileType, sizeBytes, hasStub, attachedRecordCount]
+      properties:
+        fileId:
+          type: string
+        fileName:
+          type: string
+        folderId:
+          type: ["string", "null"]
+        folderName:
+          type: ["string", "null"]
+        fileType:
+          type: string
+        sizeBytes:
+          type: integer
+        hasStub:
+          type: boolean
+        attachedRecordCount:
+          type: integer
+
+    FileListResponse:
+      type: object
+      required: [files, total]
+      properties:
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileItem"
+        total:
+          type: integer
+
+    DashboardSummary:
+      type: object
+      required: [totalFiles, totalRecords, totalRecordTypes, totalAttachments, filesWithStub, filesMissingStub, stubCoveragePercent]
+      properties:
+        totalFiles:
+          type: integer
+        totalRecords:
+          type: integer
+        totalRecordTypes:
+          type: integer
+        totalAttachments:
+          type: integer
+        filesWithStub:
+          type: integer
+        filesMissingStub:
+          type: integer
+        stubCoveragePercent:
+          type: number
+
+    StubCoverageByType:
+      type: object
+      required: [recordType, fileCount, stubCount, missingStubCount, coveragePercent]
+      properties:
+        recordType:
+          type: string
+        fileCount:
+          type: integer
+        stubCount:
+          type: integer
+        missingStubCount:
+          type: integer
+        coveragePercent:
+          type: number
+
+    NetsuiteStatus:
+      type: object
+      required: [configured, accountId]
+      properties:
+        configured:
+          type: boolean
+        accountId:
+          type: ["string", "null"]
+        message:
+          type: ["string", "null"]
+
+    RefreshStubInput:
+      type: object
+      required: [recordType]
+      properties:
+        recordType:
+          type: string
+
+    RefreshStubResult:
+      type: object
+      required: [success, updated, message]
+      properties:
+        success:
+          type: boolean
+        updated:
+          type: integer
+        message:
+          type: string
