@@ -22,6 +22,7 @@ import type {
 import type {
   AttachedFile,
   DashboardSummary,
+  CompletionResponse,
   DataStatus,
   DataUploadInput,
   DataUploadResult,
@@ -1055,3 +1056,56 @@ export const useRefreshStubStatus = <TError = ErrorType<unknown>,
       return useMutation(getRefreshStubStatusMutationOptions(options));
     }
 
+
+
+// ───────────────────────────────────────────────────────────────────
+// Phase 3 Completion endpoints (hand-added — keep in sync with
+// openapi.yaml: /data/completion GET, /data/deletion-log DELETE)
+// ───────────────────────────────────────────────────────────────────
+
+export const getGetCompletionUrl = () => `/api/data/completion`;
+
+export const getCompletion = async (options?: RequestInit): Promise<CompletionResponse> => {
+  return customFetch<CompletionResponse>(getGetCompletionUrl(), { ...options, method: 'GET' });
+};
+
+export const getGetCompletionQueryKey = () => [`/api/data/completion`] as const;
+
+export const getGetCompletionQueryOptions = <TData = Awaited<ReturnType<typeof getCompletion>>, TError = ErrorType<unknown>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCompletion>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetCompletionQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCompletion>>> = ({ signal }) => getCompletion({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getCompletion>>, TError, TData> & { queryKey: QueryKey };
+};
+
+export type GetCompletionQueryResult = NonNullable<Awaited<ReturnType<typeof getCompletion>>>;
+export type GetCompletionQueryError = ErrorType<unknown>;
+
+export function useGetCompletion<TData = Awaited<ReturnType<typeof getCompletion>>, TError = ErrorType<unknown>>(
+  options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCompletion>>, TError, TData>; request?: SecondParameter<typeof customFetch> }
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetCompletionQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+// DELETE /api/data/deletion-log — clears all loaded deletion log rows.
+
+export const getClearDeletionLogUrl = () => `/api/data/deletion-log`;
+
+export const clearDeletionLog = async (options?: RequestInit): Promise<{ success: boolean }> => {
+  return customFetch<{ success: boolean }>(getClearDeletionLogUrl(), { ...options, method: 'DELETE' });
+};
+
+export const getClearDeletionLogMutationOptions = <TError = ErrorType<unknown>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof clearDeletionLog>>, TError, void, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationOptions<Awaited<ReturnType<typeof clearDeletionLog>>, TError, void, TContext> => {
+  const { mutation: mutationOptions, request: requestOptions } = options ?? {};
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearDeletionLog>>, void> = () => clearDeletionLog(requestOptions);
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ClearDeletionLogMutationResult = NonNullable<Awaited<ReturnType<typeof clearDeletionLog>>>;
+export type ClearDeletionLogMutationError = ErrorType<unknown>;
+
+export const useClearDeletionLog = <TError = ErrorType<unknown>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof clearDeletionLog>>, TError, void, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof clearDeletionLog>>, TError, void, TContext> => {
+  return useMutation(getClearDeletionLogMutationOptions(options));
+};

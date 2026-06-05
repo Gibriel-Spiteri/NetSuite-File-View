@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Database, FileText, HardDrive, LayoutDashboard, Settings, ShieldCheck } from "lucide-react";
+import { Database, FileText, HardDrive, LayoutDashboard, Settings, ShieldCheck, FlagTriangleRight } from "lucide-react";
 import { useGetDataStatus } from "@workspace/api-client-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -18,6 +18,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <NavItem href="/records" icon={HardDrive} label="Records" active={location === "/records"} />
           <NavItem href="/files" icon={FileText} label="Files" active={location === "/files"} />
           <NavItem href="/verification" icon={ShieldCheck} label="Verification" active={location === "/verification"} />
+          <NavItem href="/completion" icon={FlagTriangleRight} label="Completion" active={location === "/completion"} />
           <div className="mt-auto flex flex-col gap-1">
             <NavItem href="/upload" icon={Database} label="Data Sources" active={location === "/upload"} />
             <NavItem href="/netsuite" icon={Settings} label="NetSuite Config" active={location === "/netsuite"} />
@@ -31,6 +32,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {location === "/records" && "Records"}
             {location === "/files" && "Files"}
             {location === "/verification" && "Verification"}
+            {location === "/completion" && "Completion"}
             {location === "/upload" && "Data Sources"}
             {location === "/netsuite" && "NetSuite Configuration"}
           </div>
