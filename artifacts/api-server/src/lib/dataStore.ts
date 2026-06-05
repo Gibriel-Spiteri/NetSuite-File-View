@@ -30,11 +30,16 @@ const BATCH_SIZE = 500;
 // These aggregation queries scan millions of rows; cache results until data changes.
 type CacheEntry<T> = { value: T; ts: number };
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const cache: { summary?: CacheEntry<Awaited<ReturnType<typeof _getDashboardSummary>>>; coverage?: CacheEntry<Awaited<ReturnType<typeof _getStubCoverageByType>>> } = {};
+const cache: {
+  summary?: CacheEntry<Awaited<ReturnType<typeof _getDashboardSummary>>>;
+  coverage?: CacheEntry<Awaited<ReturnType<typeof _getStubCoverageByType>>>;
+  recordTypes?: CacheEntry<Awaited<ReturnType<typeof _getRecordTypes>>>;
+} = {};
 
 export function invalidateSummaryCache() {
   delete cache.summary;
   delete cache.coverage;
+  delete cache.recordTypes;
 }
 
 async function upsertAllFiles(records: AllFileRecord[]): Promise<void> {
@@ -185,7 +190,7 @@ export async function getDataStatus() {
   };
 }
 
-export async function getRecordTypes() {
+async function _getRecordTypes() {
   const result = await pool.query<{
     record_type: string;
     record_count: string;
@@ -226,6 +231,16 @@ export async function getRecordTypes() {
     missingStubCount: parseInt(row.missing_stub_count, 10),
     totalSizeBytes: parseInt(row.total_size_bytes, 10),
   }));
+}
+
+export async function getRecordTypes() {
+  const now = Date.now();
+  if (cache.recordTypes && now - cache.recordTypes.ts < CACHE_TTL_MS) {
+    return cache.recordTypes.value;
+  }
+  const value = await _getRecordTypes();
+  cache.recordTypes = { value, ts: now };
+  return value;
 }
 
 export async function getVerificationItems(opts: {
@@ -297,7 +312,8 @@ export async function getRecords(opts: {
   limit?: number;
   offset?: number;
 }) {
-  const { recordType, search, stubStatus, sort, limit = 50, offset = 0 } = opts;
+  const { recordType, search, sort, limit = 50, offset = 0 } = opts;
+  const stubStatus = opts.stubStatus === "all" ? null : (opts.stubStatus ?? null);
 
   const orderBy = (sort && ALLOWED_SORTS[sort]) ?? "record_name ASC";
 
@@ -403,8 +419,67 @@ export async function getAllFiles(opts: {
   limit?: number;
   offset?: number;
 }) {
-  const { folderId, search, stubStatus, limit = 50, offset = 0 } = opts;
+  const { folderId, search, limit = 50, offset = 0 } = opts;
+  const stubStatus = opts.stubStatus === "all" ? null : (opts.stubStatus ?? null);
 
+  // Fast path: when no stub filter, paginate all_files first, then join only the
+  // current page's rows for stats — avoids a 2M-row HashAggregate.
+  if (stubStatus === null) {
+    const baseParams: (string | number | null)[] = [folderId ?? null, search ?? null];
+    const whereClause = `
+      ($1::text IS NULL OR folder_id = $1)
+      AND ($2::text IS NULL OR file_name ILIKE '%' || $2 || '%' OR file_id ILIKE '%' || $2 || '%')`;
+
+    const [countResult, pageResult] = await Promise.all([
+      pool.query<{ total: string }>(
+        `SELECT COUNT(*) AS total FROM all_files WHERE ${whereClause}`,
+        baseParams,
+      ),
+      pool.query<{
+        file_id: string;
+        file_name: string;
+        folder_id: string;
+        folder_name: string;
+        size_bytes: string;
+        has_stub: boolean;
+        attached_record_count: string;
+      }>(
+        `SELECT
+          af.file_id, af.file_name, af.folder_id, af.folder_name,
+          COALESCE(MAX(ra.size_bytes), 0) AS size_bytes,
+          BOOL_OR(COALESCE(ra.has_stub, false)) AS has_stub,
+          COUNT(ra.record_id) AS attached_record_count
+        FROM (
+          SELECT file_id, file_name, folder_id, folder_name
+          FROM all_files
+          WHERE ${whereClause}
+          ORDER BY file_name
+          LIMIT $3 OFFSET $4
+        ) af
+        LEFT JOIN record_attachments ra ON af.file_id = ra.file_id
+        GROUP BY af.file_id, af.file_name, af.folder_id, af.folder_name
+        ORDER BY af.file_name`,
+        [...baseParams, limit, offset],
+      ),
+    ]);
+
+    const total = parseInt(countResult.rows[0]?.total ?? "0", 10);
+    return {
+      files: pageResult.rows.map((r) => ({
+        fileId: r.file_id,
+        fileName: r.file_name,
+        folderId: r.folder_id,
+        folderName: r.folder_name,
+        fileType: r.file_name.includes(".") ? r.file_name.split(".").pop()!.toLowerCase() : "unknown",
+        sizeBytes: parseInt(r.size_bytes, 10),
+        hasStub: r.has_stub,
+        attachedRecordCount: parseInt(r.attached_record_count, 10),
+      })),
+      total,
+    };
+  }
+
+  // Filtered path (has_stub / missing_stub): must aggregate all rows to apply stub filter.
   const result = await pool.query<{
     file_id: string;
     file_name: string;
@@ -431,19 +506,15 @@ export async function getAllFiles(opts: {
       GROUP BY af.file_id, af.file_name, af.folder_id, af.folder_name
     ),
     filtered AS (
-      SELECT *
-      FROM file_stats
-      WHERE (
-        $3::text IS NULL
-        OR ($3 = 'has_stub' AND has_stub = true)
-        OR ($3 = 'missing_stub' AND has_stub = false)
-      )
+      SELECT * FROM file_stats
+      WHERE ($3 = 'has_stub' AND has_stub = true)
+         OR ($3 = 'missing_stub' AND has_stub = false)
     )
     SELECT *, COUNT(*) OVER() AS total_count
     FROM filtered
     ORDER BY file_name
     LIMIT $4 OFFSET $5`,
-    [folderId ?? null, search ?? null, stubStatus ?? null, limit, offset],
+    [folderId ?? null, search ?? null, stubStatus, limit, offset],
   );
 
   const total = result.rows.length > 0 ? parseInt(result.rows[0]!.total_count, 10) : 0;
