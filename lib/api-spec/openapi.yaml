@@ -299,7 +299,7 @@ components:
 
     AttachedFile:
       type: object
-      required: [fileId, fileName, fileType, sizeBytes, hasStub]
+      required: [fileId, fileName, fileType, sizeBytes, hasStub, recordStatus]
       properties:
         fileId:
           type: string
@@ -311,6 +311,8 @@ components:
           type: integer
         hasStub:
           type: boolean
+        recordStatus:
+          type: string
         stubFileName:
           type: ["string", "null"]
         folderId:
@@ -320,13 +322,15 @@ components:
 
     RecordItem:
       type: object
-      required: [recordId, recordName, recordType, fileCount, stubCount, missingStubCount]
+      required: [recordId, recordName, recordType, recordStatus, fileCount, stubCount, missingStubCount]
       properties:
         recordId:
           type: string
         recordName:
           type: string
         recordType:
+          type: string
+        recordStatus:
           type: string
         fileCount:
           type: integer

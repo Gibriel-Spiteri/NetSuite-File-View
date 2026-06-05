@@ -91,7 +91,12 @@ export function Records() {
                   >
                     <TableCell className="font-medium text-xs"><Badge variant="outline">{record.recordType}</Badge></TableCell>
                     <TableCell className="font-mono text-xs">{record.recordId}</TableCell>
-                    <TableCell>{record.recordName}</TableCell>
+                    <TableCell>
+                      <div>{record.recordName}</div>
+                      {record.recordStatus && (
+                        <div className="text-xs text-muted-foreground mt-0.5">{record.recordStatus}</div>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">{record.fileCount}</TableCell>
                     <TableCell className="text-right">
                       {record.missingStubCount > 0 ? (

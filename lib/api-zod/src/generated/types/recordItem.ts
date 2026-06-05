@@ -10,6 +10,7 @@ export interface RecordItem {
   recordId: string;
   recordName: string;
   recordType: string;
+  recordStatus: string;
   fileCount: number;
   stubCount: number;
   missingStubCount: number;

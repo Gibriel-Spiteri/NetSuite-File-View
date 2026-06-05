@@ -71,6 +71,7 @@ export const ListRecordsResponse = zod.object({
   "recordId": zod.string(),
   "recordName": zod.string(),
   "recordType": zod.string(),
+  "recordStatus": zod.string(),
   "fileCount": zod.number(),
   "stubCount": zod.number(),
   "missingStubCount": zod.number()
@@ -92,6 +93,7 @@ export const GetRecordFilesResponseItem = zod.object({
   "fileType": zod.string(),
   "sizeBytes": zod.number(),
   "hasStub": zod.boolean(),
+  "recordStatus": zod.string(),
   "stubFileName": zod.string().nullish(),
   "folderId": zod.string().nullish(),
   "folderName": zod.string().nullish()

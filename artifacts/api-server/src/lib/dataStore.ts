@@ -14,6 +14,7 @@ export interface RecordAttachment {
   recordType: string;
   recordId: string;
   recordName: string;
+  recordStatus: string;
   fileId: string;
   fileName: string;
   sizeBytes: number;
@@ -59,13 +60,13 @@ export function parseRecordAttachments(content: string): number {
 
   for (const line of lines) {
     const parts = line.split(",");
-    if (parts.length < 8) continue;
-    const [recordType, recordId, recordName, fileId, fileName, sizeBytesStr, fileType, hasStubStr] = parts.map((p) => p.trim());
+    if (parts.length < 9) continue;
+    const [recordType, recordId, recordName, recordStatus, fileId, fileName, sizeBytesStr, fileType, hasStubStr] = parts.map((p) => p.trim());
     if (!recordType || recordType === "record_type") continue;
     const sizeBytes = parseInt(sizeBytesStr, 10) || 0;
     const norm = hasStubStr?.toLowerCase();
     const hasStub = norm === "true" || norm === "1" || norm === "yes";
-    records.push({ recordType, recordId, recordName, fileId, fileName, sizeBytes, fileType, hasStub });
+    records.push({ recordType, recordId, recordName, recordStatus: recordStatus ?? "", fileId, fileName, sizeBytes, fileType, hasStub });
   }
 
   store.recordAttachments = records;
@@ -120,7 +121,7 @@ export function getRecords(opts: {
 }) {
   const { recordType, search, stubStatus, limit = 50, offset = 0 } = opts;
 
-  const recordMap = new Map<string, { recordId: string; recordName: string; recordType: string; fileCount: number; stubCount: number; missingStubCount: number }>();
+  const recordMap = new Map<string, { recordId: string; recordName: string; recordType: string; recordStatus: string; fileCount: number; stubCount: number; missingStubCount: number }>();
 
   for (const att of store.recordAttachments) {
     if (recordType && att.recordType !== recordType) continue;
@@ -131,12 +132,15 @@ export function getRecords(opts: {
         recordId: att.recordId,
         recordName: att.recordName,
         recordType: att.recordType,
+        recordStatus: att.recordStatus,
         fileCount: 0,
         stubCount: 0,
         missingStubCount: 0,
       });
     }
     const entry = recordMap.get(key)!;
+    // Keep the first non-empty status we see
+    if (!entry.recordStatus && att.recordStatus) entry.recordStatus = att.recordStatus;
     entry.fileCount++;
     if (att.hasStub) {
       entry.stubCount++;
@@ -182,6 +186,7 @@ export function getRecordFiles(recordId: string) {
       stubFileName,
       folderId: fileInfo?.folderId ?? null,
       folderName: fileInfo?.folderName ?? null,
+      recordStatus: att.recordStatus,
     };
   });
 }
@@ -344,13 +349,13 @@ function streamParseRecordAttachmentsFromPath(filePath: string): Promise<RecordA
     const rl = readline.createInterface({ input: fs.createReadStream(filePath), crlfDelay: Infinity });
     rl.on("line", (line) => {
       const parts = line.split(",");
-      if (parts.length < 8) return;
-      const [recordType, recordId, recordName, fileId, fileName, sizeBytesStr, fileType, hasStubStr] = parts.map((p) => p.trim());
+      if (parts.length < 9) return;
+      const [recordType, recordId, recordName, recordStatus, fileId, fileName, sizeBytesStr, fileType, hasStubStr] = parts.map((p) => p.trim());
       if (!recordType || recordType === "record_type") return;
       const sizeBytes = parseInt(sizeBytesStr, 10) || 0;
       const norm = hasStubStr?.toLowerCase();
       const hasStub = norm === "true" || norm === "1" || norm === "yes";
-      records.push({ recordType, recordId, recordName, fileId, fileName, sizeBytes, fileType, hasStub });
+      records.push({ recordType, recordId, recordName, recordStatus: recordStatus ?? "", fileId, fileName, sizeBytes, fileType, hasStub });
     });
     rl.on("close", () => resolve(records));
     rl.on("error", reject);
@@ -360,25 +365,29 @@ function streamParseRecordAttachmentsFromPath(filePath: string): Promise<RecordA
 export async function loadDataFromDisk(): Promise<void> {
   const dataDir = path.resolve(process.cwd(), "../../data");
 
-  const allFilesParts = [
-    path.join(dataDir, "all_files_20260604T213706Z.part01.txt"),
-    path.join(dataDir, "all_files_20260604T213706Z.part02.txt"),
-  ].filter((p) => fs.existsSync(p));
+  const allFilesGlob = fs.readdirSync(dataDir)
+    .filter((f) => f.startsWith("all_files_") && f.endsWith(".txt"))
+    .map((f) => path.join(dataDir, f))
+    .sort();
 
-  const attachmentsPath = path.join(dataDir, "record-attachments.csv");
-
-  if (allFilesParts.length > 0) {
-    logger.info({ parts: allFilesParts.length }, "Loading all_files from disk...");
-    const allParts = await Promise.all(allFilesParts.map(streamParseAllFilesFromPath));
+  if (allFilesGlob.length > 0) {
+    logger.info({ parts: allFilesGlob.length }, "Loading all_files from disk...");
+    const allParts = await Promise.all(allFilesGlob.map(streamParseAllFilesFromPath));
     const combined = allParts.flat();
     store.allFiles = new Map(combined.map((r) => [r.fileId, r]));
     store.allFilesLoaded = true;
     logger.info({ count: store.allFiles.size }, "all_files loaded from disk");
   }
 
-  if (fs.existsSync(attachmentsPath)) {
-    logger.info("Loading record-attachments from disk...");
-    store.recordAttachments = await streamParseRecordAttachmentsFromPath(attachmentsPath);
+  const attachmentParts = fs.readdirSync(dataDir)
+    .filter((f) => f.startsWith("record-attachments") && f.endsWith(".csv"))
+    .map((f) => path.join(dataDir, f))
+    .sort();
+
+  if (attachmentParts.length > 0) {
+    logger.info({ parts: attachmentParts.length }, "Loading record-attachments from disk...");
+    const allParts = await Promise.all(attachmentParts.map(streamParseRecordAttachmentsFromPath));
+    store.recordAttachments = allParts.flat();
     store.recordAttachmentsLoaded = true;
     logger.info({ count: store.recordAttachments.length }, "record-attachments loaded from disk");
   }
