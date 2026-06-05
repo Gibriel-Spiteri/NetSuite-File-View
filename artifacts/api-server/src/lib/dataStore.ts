@@ -1,6 +1,8 @@
 import * as fs from "fs";
 import * as readline from "readline";
 import * as path from "path";
+import { db, pool, allFilesTable, recordAttachmentsTable } from "@workspace/db";
+import { sql } from "drizzle-orm";
 import { logger } from "./logger";
 
 export interface AllFileRecord {
@@ -22,24 +24,68 @@ export interface RecordAttachment {
   hasStub: boolean;
 }
 
-interface DataStore {
-  allFiles: Map<string, AllFileRecord>;
-  recordAttachments: RecordAttachment[];
-  allFilesLoaded: boolean;
-  recordAttachmentsLoaded: boolean;
+const BATCH_SIZE = 500;
+
+async function upsertAllFiles(records: AllFileRecord[]): Promise<void> {
+  for (let i = 0; i < records.length; i += BATCH_SIZE) {
+    const batch = records.slice(i, i + BATCH_SIZE);
+    await db
+      .insert(allFilesTable)
+      .values(
+        batch.map((r) => ({
+          fileId: r.fileId,
+          fileName: r.fileName,
+          folderId: r.folderId,
+          folderName: r.folderName,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: allFilesTable.fileId,
+        set: {
+          fileName: sql`excluded.file_name`,
+          folderId: sql`excluded.folder_id`,
+          folderName: sql`excluded.folder_name`,
+        },
+      });
+  }
 }
 
-const store: DataStore = {
-  allFiles: new Map(),
-  recordAttachments: [],
-  allFilesLoaded: false,
-  recordAttachmentsLoaded: false,
-};
+async function upsertRecordAttachments(records: RecordAttachment[]): Promise<void> {
+  for (let i = 0; i < records.length; i += BATCH_SIZE) {
+    const batch = records.slice(i, i + BATCH_SIZE);
+    await db
+      .insert(recordAttachmentsTable)
+      .values(
+        batch.map((r) => ({
+          recordType: r.recordType,
+          recordId: r.recordId,
+          recordName: r.recordName,
+          recordStatus: r.recordStatus,
+          fileId: r.fileId,
+          fileName: r.fileName,
+          sizeBytes: r.sizeBytes,
+          fileType: r.fileType,
+          hasStub: r.hasStub,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [recordAttachmentsTable.recordId, recordAttachmentsTable.fileId],
+        set: {
+          recordType: sql`excluded.record_type`,
+          recordName: sql`excluded.record_name`,
+          recordStatus: sql`excluded.record_status`,
+          fileName: sql`excluded.file_name`,
+          sizeBytes: sql`excluded.size_bytes`,
+          fileType: sql`excluded.file_type`,
+          hasStub: sql`excluded.has_stub`,
+        },
+      });
+  }
+}
 
-export function parseAllFiles(content: string): number {
+function parseAllFilesContent(content: string): AllFileRecord[] {
   const lines = content.split(/\r?\n/).filter((l) => l.trim());
   const records: AllFileRecord[] = [];
-
   for (const line of lines) {
     const parts = line.split("|");
     if (parts.length < 4) continue;
@@ -47,17 +93,12 @@ export function parseAllFiles(content: string): number {
     if (!fileId || fileId === "fileId") continue;
     records.push({ fileId, fileName, folderId, folderName });
   }
-
-  store.allFiles = new Map(records.map((r) => [r.fileId, r]));
-  store.allFilesLoaded = true;
-  logger.info({ count: records.length }, "All files loaded");
-  return records.length;
+  return records;
 }
 
-export function parseRecordAttachments(content: string): number {
+function parseRecordAttachmentsContent(content: string): RecordAttachment[] {
   const lines = content.split(/\r?\n/).filter((l) => l.trim());
   const records: RecordAttachment[] = [];
-
   for (const line of lines) {
     const parts = line.split(",");
     if (parts.length < 9) continue;
@@ -68,97 +109,174 @@ export function parseRecordAttachments(content: string): number {
     const hasStub = norm === "true" || norm === "1" || norm === "yes";
     records.push({ recordType, recordId, recordName, recordStatus: recordStatus ?? "", fileId, fileName, sizeBytes, fileType, hasStub });
   }
+  return records;
+}
 
-  store.recordAttachments = records;
-  store.recordAttachmentsLoaded = true;
-  logger.info({ count: records.length }, "Record attachments loaded");
+export async function parseAllFiles(content: string): Promise<number> {
+  const records = parseAllFilesContent(content);
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`TRUNCATE all_files CASCADE`);
+    for (let i = 0; i < records.length; i += BATCH_SIZE) {
+      const batch = records.slice(i, i + BATCH_SIZE);
+      await tx.insert(allFilesTable).values(
+        batch.map((r) => ({
+          fileId: r.fileId,
+          fileName: r.fileName,
+          folderId: r.folderId,
+          folderName: r.folderName,
+        })),
+      );
+    }
+  });
+  logger.info({ count: records.length }, "All files loaded into DB");
   return records.length;
 }
 
-/** Stub files (.html HTMLDOC) are the stubs themselves — exclude from coverage calculations */
-function isStubFile(att: { fileType: string }): boolean {
-  return att.fileType === "HTMLDOC";
+export async function parseRecordAttachments(content: string): Promise<number> {
+  const records = parseRecordAttachmentsContent(content);
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`TRUNCATE record_attachments`);
+    for (let i = 0; i < records.length; i += BATCH_SIZE) {
+      const batch = records.slice(i, i + BATCH_SIZE);
+      await tx.insert(recordAttachmentsTable).values(
+        batch.map((r) => ({
+          recordType: r.recordType,
+          recordId: r.recordId,
+          recordName: r.recordName,
+          recordStatus: r.recordStatus,
+          fileId: r.fileId,
+          fileName: r.fileName,
+          sizeBytes: r.sizeBytes,
+          fileType: r.fileType,
+          hasStub: r.hasStub,
+        })),
+      );
+    }
+  });
+  logger.info({ count: records.length }, "Record attachments loaded into DB");
+  return records.length;
 }
 
-export function getDataStatus() {
+export async function getDataStatus() {
+  const [filesRes, attachmentsRes] = await Promise.all([
+    pool.query<{ count: string }>("SELECT COUNT(*) AS count FROM all_files"),
+    pool.query<{ count: string }>("SELECT COUNT(*) AS count FROM record_attachments"),
+  ]);
+  const allFilesCount = parseInt(filesRes.rows[0]?.count ?? "0", 10);
+  const recordAttachmentsCount = parseInt(attachmentsRes.rows[0]?.count ?? "0", 10);
   return {
-    allFilesLoaded: store.allFilesLoaded,
-    recordAttachmentsLoaded: store.recordAttachmentsLoaded,
-    allFilesCount: store.allFiles.size,
-    recordAttachmentsCount: store.recordAttachments.length,
+    allFilesLoaded: allFilesCount > 0,
+    recordAttachmentsLoaded: recordAttachmentsCount > 0,
+    allFilesCount,
+    recordAttachmentsCount,
   };
 }
 
-export function getRecordTypes() {
-  const typeMap = new Map<string, { recordCount: Set<string>; fileCount: number; stubCount: number; missingStubCount: number; fileSizes: Map<string, number> }>();
+export async function getRecordTypes() {
+  const result = await pool.query<{
+    record_type: string;
+    record_count: string;
+    file_count: string;
+    stub_count: string;
+    missing_stub_count: string;
+    total_size_bytes: string;
+  }>(`
+    WITH file_sizes AS (
+      SELECT record_type, file_id, MAX(size_bytes) AS size_bytes
+      FROM record_attachments
+      WHERE file_type != 'HTMLDOC'
+      GROUP BY record_type, file_id
+    ),
+    type_sizes AS (
+      SELECT record_type, COALESCE(SUM(size_bytes), 0) AS total_size_bytes
+      FROM file_sizes
+      GROUP BY record_type
+    )
+    SELECT
+      ra.record_type,
+      COUNT(DISTINCT ra.record_id) AS record_count,
+      COUNT(CASE WHEN ra.file_type != 'HTMLDOC' THEN 1 END) AS file_count,
+      SUM(CASE WHEN ra.file_type != 'HTMLDOC' AND ra.has_stub THEN 1 ELSE 0 END) AS stub_count,
+      SUM(CASE WHEN ra.file_type != 'HTMLDOC' AND NOT ra.has_stub THEN 1 ELSE 0 END) AS missing_stub_count,
+      COALESCE(ts.total_size_bytes, 0) AS total_size_bytes
+    FROM record_attachments ra
+    LEFT JOIN type_sizes ts ON ra.record_type = ts.record_type
+    GROUP BY ra.record_type, ts.total_size_bytes
+    ORDER BY ra.record_type
+  `);
 
-  for (const att of store.recordAttachments) {
-    if (!typeMap.has(att.recordType)) {
-      typeMap.set(att.recordType, { recordCount: new Set(), fileCount: 0, stubCount: 0, missingStubCount: 0, fileSizes: new Map() });
-    }
-    const entry = typeMap.get(att.recordType)!;
-    entry.recordCount.add(att.recordId);
-    if (isStubFile(att)) continue;
-    entry.fileCount++;
-    if (!entry.fileSizes.has(att.fileId)) entry.fileSizes.set(att.fileId, att.sizeBytes);
-    if (att.hasStub) {
-      entry.stubCount++;
-    } else {
-      entry.missingStubCount++;
-    }
-  }
-
-  return Array.from(typeMap.entries())
-    .map(([recordType, data]) => ({
-      recordType,
-      recordCount: data.recordCount.size,
-      fileCount: data.fileCount,
-      stubCount: data.stubCount,
-      missingStubCount: data.missingStubCount,
-      totalSizeBytes: Array.from(data.fileSizes.values()).reduce((s, n) => s + n, 0),
-    }))
-    .sort((a, b) => a.recordType.localeCompare(b.recordType));
+  return result.rows.map((row) => ({
+    recordType: row.record_type,
+    recordCount: parseInt(row.record_count, 10),
+    fileCount: parseInt(row.file_count, 10),
+    stubCount: parseInt(row.stub_count, 10),
+    missingStubCount: parseInt(row.missing_stub_count, 10),
+    totalSizeBytes: parseInt(row.total_size_bytes, 10),
+  }));
 }
 
-export function getVerificationItems(opts: {
+export async function getVerificationItems(opts: {
   recordType?: string;
   limit?: number;
   offset?: number;
 }) {
   const { recordType, limit = 200, offset = 0 } = opts;
 
-  let rows = store.recordAttachments.filter(
-    (att) => !isStubFile(att) && !att.hasStub
-  );
+  const [itemsRes, countRes] = await Promise.all([
+    pool.query<{
+      record_type: string;
+      record_id: string;
+      record_name: string;
+      record_status: string;
+      file_id: string;
+      file_name: string;
+      size_bytes: number;
+      file_type: string;
+    }>(
+      `SELECT record_type, record_id, record_name, record_status, file_id, file_name, size_bytes, file_type
+       FROM record_attachments
+       WHERE file_type != 'HTMLDOC'
+         AND has_stub = false
+         AND ($1::text IS NULL OR record_type = $1)
+       ORDER BY record_type ASC,
+                COALESCE(NULLIF(record_name, ''), record_id) ASC,
+                file_name ASC
+       LIMIT $2 OFFSET $3`,
+      [recordType ?? null, limit, offset],
+    ),
+    pool.query<{ total: string }>(
+      `SELECT COUNT(*) AS total
+       FROM record_attachments
+       WHERE file_type != 'HTMLDOC'
+         AND has_stub = false
+         AND ($1::text IS NULL OR record_type = $1)`,
+      [recordType ?? null],
+    ),
+  ]);
 
-  if (recordType) {
-    rows = rows.filter((r) => r.recordType === recordType);
-  }
-
-  rows.sort((a, b) => {
-    const typeCmp = a.recordType.localeCompare(b.recordType);
-    if (typeCmp !== 0) return typeCmp;
-    const nameCmp = (a.recordName || a.recordId).localeCompare(b.recordName || b.recordId);
-    if (nameCmp !== 0) return nameCmp;
-    return a.fileName.localeCompare(b.fileName);
-  });
-
-  const total = rows.length;
-  const items = rows.slice(offset, offset + limit).map((att) => ({
-    recordType: att.recordType,
-    recordId: att.recordId,
-    recordName: att.recordName,
-    recordStatus: att.recordStatus,
-    fileId: att.fileId,
-    fileName: att.fileName,
-    sizeBytes: att.sizeBytes,
-    fileType: att.fileType,
-  }));
-
-  return { items, total };
+  return {
+    items: itemsRes.rows.map((r) => ({
+      recordType: r.record_type,
+      recordId: r.record_id,
+      recordName: r.record_name,
+      recordStatus: r.record_status,
+      fileId: r.file_id,
+      fileName: r.file_name,
+      sizeBytes: r.size_bytes,
+      fileType: r.file_type,
+    })),
+    total: parseInt(countRes.rows[0]?.total ?? "0", 10),
+  };
 }
 
-export function getRecords(opts: {
+const ALLOWED_SORTS: Record<string, string> = {
+  missing_stubs_desc: "missing_stub_count DESC",
+  missing_stubs_asc: "missing_stub_count ASC",
+  record_name: "record_name ASC",
+  record_type: "record_type ASC",
+};
+
+export async function getRecords(opts: {
   recordType?: string;
   search?: string;
   stubStatus?: string;
@@ -168,89 +286,104 @@ export function getRecords(opts: {
 }) {
   const { recordType, search, stubStatus, sort, limit = 50, offset = 0 } = opts;
 
-  const recordMap = new Map<string, { recordId: string; recordName: string; recordType: string; recordStatus: string; fileCount: number; stubCount: number; missingStubCount: number }>();
+  const orderBy = (sort && ALLOWED_SORTS[sort]) ?? "record_name ASC";
 
-  for (const att of store.recordAttachments) {
-    if (recordType && att.recordType !== recordType) continue;
+  const result = await pool.query<{
+    record_id: string;
+    record_name: string;
+    record_type: string;
+    record_status: string;
+    file_count: string;
+    stub_count: string;
+    missing_stub_count: string;
+    total_count: string;
+  }>(
+    `WITH record_stats AS (
+      SELECT
+        record_id,
+        MAX(record_name) AS record_name,
+        MAX(record_type) AS record_type,
+        COALESCE(MIN(NULLIF(record_status, '')), '') AS record_status,
+        COUNT(CASE WHEN file_type != 'HTMLDOC' THEN 1 END) AS file_count,
+        SUM(CASE WHEN file_type != 'HTMLDOC' AND has_stub THEN 1 ELSE 0 END) AS stub_count,
+        SUM(CASE WHEN file_type != 'HTMLDOC' AND NOT has_stub THEN 1 ELSE 0 END) AS missing_stub_count
+      FROM record_attachments
+      WHERE ($1::text IS NULL OR record_type = $1)
+      GROUP BY record_id
+    ),
+    filtered AS (
+      SELECT *
+      FROM record_stats
+      WHERE ($2::text IS NULL OR record_name ILIKE '%' || $2 || '%' OR record_id ILIKE '%' || $2 || '%')
+        AND (
+          $3::text IS NULL
+          OR ($3 = 'has_stub' AND stub_count > 0 AND missing_stub_count = 0)
+          OR ($3 = 'missing_stub' AND missing_stub_count > 0)
+        )
+    )
+    SELECT *, COUNT(*) OVER() AS total_count
+    FROM filtered
+    ORDER BY ${orderBy}
+    LIMIT $4 OFFSET $5`,
+    [recordType ?? null, search ?? null, stubStatus ?? null, limit, offset],
+  );
 
-    const key = att.recordId;
-    if (!recordMap.has(key)) {
-      recordMap.set(key, {
-        recordId: att.recordId,
-        recordName: att.recordName,
-        recordType: att.recordType,
-        recordStatus: att.recordStatus,
-        fileCount: 0,
-        stubCount: 0,
-        missingStubCount: 0,
-      });
-    }
-    const entry = recordMap.get(key)!;
-    // Keep the first non-empty status we see
-    if (!entry.recordStatus && att.recordStatus) entry.recordStatus = att.recordStatus;
-    if (isStubFile(att)) continue;
-    entry.fileCount++;
-    if (att.hasStub) {
-      entry.stubCount++;
-    } else {
-      entry.missingStubCount++;
-    }
-  }
+  const total = result.rows.length > 0 ? parseInt(result.rows[0]!.total_count, 10) : 0;
 
-  let records = Array.from(recordMap.values());
-
-  if (search) {
-    const q = search.toLowerCase();
-    records = records.filter(
-      (r) => r.recordName.toLowerCase().includes(q) || r.recordId.toLowerCase().includes(q)
-    );
-  }
-
-  if (stubStatus === "has_stub") {
-    records = records.filter((r) => r.stubCount > 0 && r.missingStubCount === 0);
-  } else if (stubStatus === "missing_stub") {
-    records = records.filter((r) => r.missingStubCount > 0);
-  }
-
-  if (sort === "missing_stubs_desc") {
-    records.sort((a, b) => b.missingStubCount - a.missingStubCount);
-  } else if (sort === "missing_stubs_asc") {
-    records.sort((a, b) => a.missingStubCount - b.missingStubCount);
-  } else if (sort === "record_name") {
-    records.sort((a, b) => a.recordName.localeCompare(b.recordName));
-  } else if (sort === "record_type") {
-    records.sort((a, b) => a.recordType.localeCompare(b.recordType));
-  }
-
-  const total = records.length;
-  const paginated = records.slice(offset, offset + limit);
-
-  return { records: paginated, total };
+  return {
+    records: result.rows.map((r) => ({
+      recordId: r.record_id,
+      recordName: r.record_name,
+      recordType: r.record_type,
+      recordStatus: r.record_status,
+      fileCount: parseInt(r.file_count, 10),
+      stubCount: parseInt(r.stub_count, 10),
+      missingStubCount: parseInt(r.missing_stub_count, 10),
+    })),
+    total,
+  };
 }
 
-export function getRecordFiles(recordId: string) {
-  const attachments = store.recordAttachments.filter((a) => a.recordId === recordId);
-  if (attachments.length === 0) return null;
+export async function getRecordFiles(recordId: string) {
+  const result = await pool.query<{
+    file_id: string;
+    file_name: string;
+    file_type: string;
+    size_bytes: number;
+    has_stub: boolean;
+    record_status: string;
+    folder_id: string | null;
+    folder_name: string | null;
+  }>(
+    `SELECT ra.file_id, ra.file_name, ra.file_type, ra.size_bytes, ra.has_stub, ra.record_status,
+            af.folder_id, af.folder_name
+     FROM record_attachments ra
+     LEFT JOIN all_files af ON ra.file_id = af.file_id
+     WHERE ra.record_id = $1`,
+    [recordId],
+  );
 
-  return attachments.map((att) => {
-    const fileInfo = store.allFiles.get(att.fileId);
-    const stubFileName = att.hasStub ? att.fileName.replace(/(\.[^.]+)$/, ".html") : null;
+  if (result.rows.length === 0) return null;
+
+  return result.rows.map((r) => {
+    const isStubFile = r.file_type === "HTMLDOC";
+    const stubFileName = r.has_stub ? r.file_name.replace(/(\.[^.]+)$/, ".html") : null;
     return {
-      fileId: att.fileId,
-      fileName: att.fileName,
-      fileType: att.fileType,
-      sizeBytes: att.sizeBytes,
-      hasStub: att.hasStub,
-      isStubFile: isStubFile(att),
+      fileId: r.file_id,
+      fileName: r.file_name,
+      fileType: r.file_type,
+      sizeBytes: r.size_bytes,
+      hasStub: r.has_stub,
+      isStubFile,
       stubFileName,
-      folderId: fileInfo?.folderId ?? null,
-      folderName: fileInfo?.folderName ?? null,
-      recordStatus: att.recordStatus,
+      folderId: r.folder_id ?? null,
+      folderName: r.folder_name ?? null,
+      recordStatus: r.record_status,
     };
   });
 }
 
-export function getAllFiles(opts: {
+export async function getAllFiles(opts: {
   folderId?: string;
   search?: string;
   stubStatus?: string;
@@ -259,138 +392,173 @@ export function getAllFiles(opts: {
 }) {
   const { folderId, search, stubStatus, limit = 50, offset = 0 } = opts;
 
-  const attachmentCountMap = new Map<string, number>();
-  const stubMap = new Map<string, boolean>();
+  const result = await pool.query<{
+    file_id: string;
+    file_name: string;
+    folder_id: string;
+    folder_name: string;
+    size_bytes: string;
+    has_stub: boolean;
+    attached_record_count: string;
+    total_count: string;
+  }>(
+    `WITH file_stats AS (
+      SELECT
+        af.file_id,
+        af.file_name,
+        af.folder_id,
+        af.folder_name,
+        COALESCE(MAX(ra.size_bytes), 0) AS size_bytes,
+        BOOL_OR(COALESCE(ra.has_stub, false)) AS has_stub,
+        COUNT(ra.record_id) AS attached_record_count
+      FROM all_files af
+      LEFT JOIN record_attachments ra ON af.file_id = ra.file_id
+      WHERE ($1::text IS NULL OR af.folder_id = $1)
+        AND ($2::text IS NULL OR af.file_name ILIKE '%' || $2 || '%' OR af.file_id ILIKE '%' || $2 || '%')
+      GROUP BY af.file_id, af.file_name, af.folder_id, af.folder_name
+    ),
+    filtered AS (
+      SELECT *
+      FROM file_stats
+      WHERE (
+        $3::text IS NULL
+        OR ($3 = 'has_stub' AND has_stub = true)
+        OR ($3 = 'missing_stub' AND has_stub = false)
+      )
+    )
+    SELECT *, COUNT(*) OVER() AS total_count
+    FROM filtered
+    ORDER BY file_name
+    LIMIT $4 OFFSET $5`,
+    [folderId ?? null, search ?? null, stubStatus ?? null, limit, offset],
+  );
 
-  for (const att of store.recordAttachments) {
-    attachmentCountMap.set(att.fileId, (attachmentCountMap.get(att.fileId) ?? 0) + 1);
-    if (!stubMap.has(att.fileId)) {
-      stubMap.set(att.fileId, att.hasStub);
-    } else if (att.hasStub) {
-      stubMap.set(att.fileId, true);
-    }
-  }
-
-  let files = Array.from(store.allFiles.values()).map((f) => ({
-    fileId: f.fileId,
-    fileName: f.fileName,
-    folderId: f.folderId,
-    folderName: f.folderName,
-    fileType: f.fileName.includes(".") ? f.fileName.split(".").pop()!.toLowerCase() : "unknown",
-    sizeBytes: 0,
-    hasStub: stubMap.get(f.fileId) ?? false,
-    attachedRecordCount: attachmentCountMap.get(f.fileId) ?? 0,
-  }));
-
-  if (folderId) {
-    files = files.filter((f) => f.folderId === folderId);
-  }
-
-  if (search) {
-    const q = search.toLowerCase();
-    files = files.filter((f) => f.fileName.toLowerCase().includes(q) || f.fileId.includes(q));
-  }
-
-  if (stubStatus === "has_stub") {
-    files = files.filter((f) => f.hasStub);
-  } else if (stubStatus === "missing_stub") {
-    files = files.filter((f) => !f.hasStub);
-  }
-
-  const total = files.length;
-  const paginated = files.slice(offset, offset + limit);
-
-  return { files: paginated, total };
-}
-
-export function getDashboardSummary() {
-  const totalFiles = store.allFiles.size;
-  const totalAttachments = store.recordAttachments.length;
-
-  const recordIds = new Set(store.recordAttachments.map((a) => a.recordId));
-  const totalRecords = recordIds.size;
-
-  const recordTypes = new Set(store.recordAttachments.map((a) => a.recordType));
-  const totalRecordTypes = recordTypes.size;
-
-  // Exclude stub files themselves from coverage calculations
-  const fileStubMap = new Map<string, boolean>();
-  for (const att of store.recordAttachments) {
-    if (isStubFile(att)) continue;
-    if (!fileStubMap.has(att.fileId)) {
-      fileStubMap.set(att.fileId, att.hasStub);
-    } else if (att.hasStub) {
-      fileStubMap.set(att.fileId, true);
-    }
-  }
-
-  let stubFileCount = 0;
-  for (const hasStub of fileStubMap.values()) {
-    if (hasStub) stubFileCount++;
-  }
-
-  const filesWithStub = stubFileCount;
-  const filesMissingStub = fileStubMap.size - filesWithStub;
-  const stubCoveragePercent =
-    fileStubMap.size > 0 ? Math.round((filesWithStub / fileStubMap.size) * 10000) / 100 : 0;
-
-  const fileSizeMap = new Map<string, number>();
-  for (const att of store.recordAttachments) {
-    if (isStubFile(att)) continue;
-    if (!fileSizeMap.has(att.fileId)) fileSizeMap.set(att.fileId, att.sizeBytes);
-  }
-  const totalSizeBytes = Array.from(fileSizeMap.values()).reduce((s, n) => s + n, 0);
+  const total = result.rows.length > 0 ? parseInt(result.rows[0]!.total_count, 10) : 0;
 
   return {
-    totalFiles,
-    totalRecords,
-    totalRecordTypes,
-    totalAttachments,
-    filesWithStub,
-    filesMissingStub,
-    stubCoveragePercent,
-    totalSizeBytes,
+    files: result.rows.map((r) => ({
+      fileId: r.file_id,
+      fileName: r.file_name,
+      folderId: r.folder_id,
+      folderName: r.folder_name,
+      fileType: r.file_name.includes(".") ? r.file_name.split(".").pop()!.toLowerCase() : "unknown",
+      sizeBytes: parseInt(r.size_bytes, 10),
+      hasStub: r.has_stub,
+      attachedRecordCount: parseInt(r.attached_record_count, 10),
+    })),
+    total,
   };
 }
 
-export function getStubCoverageByType() {
-  const typeMap = new Map<string, { fileSet: Map<string, boolean>; sizeMap: Map<string, number> }>();
+export async function getDashboardSummary() {
+  const result = await pool.query<{
+    total_files: string;
+    total_records: string;
+    total_record_types: string;
+    total_attachments: string;
+    files_with_stub: string;
+    files_missing_stub: string;
+    total_size_bytes: string;
+  }>(`
+    WITH non_stub_deduped AS (
+      SELECT file_id, MAX(size_bytes) AS size_bytes, BOOL_OR(has_stub) AS has_stub
+      FROM record_attachments
+      WHERE file_type != 'HTMLDOC'
+      GROUP BY file_id
+    )
+    SELECT
+      (SELECT COUNT(*) FROM all_files) AS total_files,
+      (SELECT COUNT(DISTINCT record_id) FROM record_attachments) AS total_records,
+      (SELECT COUNT(DISTINCT record_type) FROM record_attachments) AS total_record_types,
+      (SELECT COUNT(*) FROM record_attachments) AS total_attachments,
+      COUNT(*) FILTER (WHERE has_stub) AS files_with_stub,
+      COUNT(*) FILTER (WHERE NOT has_stub) AS files_missing_stub,
+      COALESCE(SUM(size_bytes), 0) AS total_size_bytes
+    FROM non_stub_deduped
+  `);
 
-  for (const att of store.recordAttachments) {
-    if (isStubFile(att)) continue;
-    if (!typeMap.has(att.recordType)) {
-      typeMap.set(att.recordType, { fileSet: new Map(), sizeMap: new Map() });
-    }
-    const entry = typeMap.get(att.recordType)!;
-    if (!entry.fileSet.has(att.fileId)) {
-      entry.fileSet.set(att.fileId, att.hasStub);
-      entry.sizeMap.set(att.fileId, att.sizeBytes);
-    } else if (att.hasStub) {
-      entry.fileSet.set(att.fileId, true);
-    }
+  const row = result.rows[0];
+  if (!row) {
+    return {
+      totalFiles: 0,
+      totalRecords: 0,
+      totalRecordTypes: 0,
+      totalAttachments: 0,
+      filesWithStub: 0,
+      filesMissingStub: 0,
+      stubCoveragePercent: 0,
+      totalSizeBytes: 0,
+    };
   }
 
-  return Array.from(typeMap.entries())
-    .map(([recordType, data]) => {
-      const fileCount = data.fileSet.size;
-      const stubCount = Array.from(data.fileSet.values()).filter(Boolean).length;
-      const missingStubCount = fileCount - stubCount;
-      const coveragePercent = fileCount > 0 ? Math.round((stubCount / fileCount) * 10000) / 100 : 0;
-      const totalSizeBytes = Array.from(data.sizeMap.values()).reduce((s, n) => s + n, 0);
-      return { recordType, fileCount, stubCount, missingStubCount, coveragePercent, totalSizeBytes };
-    })
-    .sort((a, b) => b.fileCount - a.fileCount);
+  const filesWithStub = parseInt(row.files_with_stub, 10);
+  const filesMissingStub = parseInt(row.files_missing_stub, 10);
+  const nonStubTotal = filesWithStub + filesMissingStub;
+  const stubCoveragePercent = nonStubTotal > 0
+    ? Math.round((filesWithStub / nonStubTotal) * 10000) / 100
+    : 0;
+
+  return {
+    totalFiles: parseInt(row.total_files, 10),
+    totalRecords: parseInt(row.total_records, 10),
+    totalRecordTypes: parseInt(row.total_record_types, 10),
+    totalAttachments: parseInt(row.total_attachments, 10),
+    filesWithStub,
+    filesMissingStub,
+    stubCoveragePercent,
+    totalSizeBytes: parseInt(row.total_size_bytes, 10),
+  };
 }
 
-export function updateStubStatus(fileId: string, hasStub: boolean) {
-  let updated = 0;
-  for (const att of store.recordAttachments) {
-    if (att.fileId === fileId) {
-      att.hasStub = hasStub;
-      updated++;
-    }
-  }
-  return updated;
+export async function getStubCoverageByType() {
+  const result = await pool.query<{
+    record_type: string;
+    file_count: string;
+    stub_count: string;
+    missing_stub_count: string;
+    total_size_bytes: string;
+  }>(`
+    WITH file_stubs AS (
+      SELECT record_type, file_id, MAX(size_bytes) AS size_bytes, BOOL_OR(has_stub) AS has_stub
+      FROM record_attachments
+      WHERE file_type != 'HTMLDOC'
+      GROUP BY record_type, file_id
+    )
+    SELECT
+      record_type,
+      COUNT(*) AS file_count,
+      COUNT(*) FILTER (WHERE has_stub) AS stub_count,
+      COUNT(*) FILTER (WHERE NOT has_stub) AS missing_stub_count,
+      COALESCE(SUM(size_bytes), 0) AS total_size_bytes
+    FROM file_stubs
+    GROUP BY record_type
+    ORDER BY file_count DESC
+  `);
+
+  return result.rows.map((row) => {
+    const fileCount = parseInt(row.file_count, 10);
+    const stubCount = parseInt(row.stub_count, 10);
+    const missingStubCount = parseInt(row.missing_stub_count, 10);
+    const coveragePercent = fileCount > 0
+      ? Math.round((stubCount / fileCount) * 10000) / 100
+      : 0;
+    return {
+      recordType: row.record_type,
+      fileCount,
+      stubCount,
+      missingStubCount,
+      coveragePercent,
+      totalSizeBytes: parseInt(row.total_size_bytes, 10),
+    };
+  });
+}
+
+export async function updateStubStatus(fileId: string, hasStub: boolean): Promise<number> {
+  const result = await pool.query<{ file_id: string }>(
+    "UPDATE record_attachments SET has_stub = $1 WHERE file_id = $2 RETURNING file_id",
+    [hasStub, fileId],
+  );
+  return result.rowCount ?? 0;
 }
 
 function streamParseAllFilesFromPath(filePath: string): Promise<AllFileRecord[]> {
@@ -429,9 +597,18 @@ function streamParseRecordAttachmentsFromPath(filePath: string): Promise<RecordA
 }
 
 export async function loadDataFromDisk(): Promise<void> {
-  const dataDir = path.resolve(process.cwd(), "../../data");
+  const workspaceRoot = process.cwd().endsWith(path.join("artifacts", "api-server"))
+    ? path.resolve(process.cwd(), "../..")
+    : process.cwd();
+  const dataDir = path.resolve(workspaceRoot, "data");
 
-  const allFilesGlob = fs.readdirSync(dataDir)
+  if (!fs.existsSync(dataDir)) {
+    logger.info("No data directory found, skipping disk load");
+    return;
+  }
+
+  const allFilesGlob = fs
+    .readdirSync(dataDir)
     .filter((f) => f.startsWith("all_files_") && f.endsWith(".txt"))
     .map((f) => path.join(dataDir, f))
     .sort();
@@ -440,12 +617,12 @@ export async function loadDataFromDisk(): Promise<void> {
     logger.info({ parts: allFilesGlob.length }, "Loading all_files from disk...");
     const allParts = await Promise.all(allFilesGlob.map(streamParseAllFilesFromPath));
     const combined = allParts.flat();
-    store.allFiles = new Map(combined.map((r) => [r.fileId, r]));
-    store.allFilesLoaded = true;
-    logger.info({ count: store.allFiles.size }, "all_files loaded from disk");
+    await upsertAllFiles(combined);
+    logger.info({ count: combined.length }, "all_files upserted from disk");
   }
 
-  const attachmentParts = fs.readdirSync(dataDir)
+  const attachmentParts = fs
+    .readdirSync(dataDir)
     .filter((f) => f.startsWith("record-attachments") && f.endsWith(".csv"))
     .map((f) => path.join(dataDir, f))
     .sort();
@@ -453,10 +630,8 @@ export async function loadDataFromDisk(): Promise<void> {
   if (attachmentParts.length > 0) {
     logger.info({ parts: attachmentParts.length }, "Loading record-attachments from disk...");
     const allParts = await Promise.all(attachmentParts.map(streamParseRecordAttachmentsFromPath));
-    store.recordAttachments = allParts.flat();
-    store.recordAttachmentsLoaded = true;
-    logger.info({ count: store.recordAttachments.length }, "record-attachments loaded from disk");
+    const combined = allParts.flat();
+    await upsertRecordAttachments(combined);
+    logger.info({ count: combined.length }, "record-attachments upserted from disk");
   }
 }
-
-export { store };

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { getNetsuiteStatus, isConfigured, queryStubStatusForRecordType } from "../lib/netsuite";
-import { updateStubStatus, store } from "../lib/dataStore";
+import { updateStubStatus } from "../lib/dataStore";
+import { pool } from "@workspace/db";
 import { RefreshStubStatusBody } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -27,13 +28,11 @@ router.post("/netsuite/refresh-stubs", async (req, res): Promise<void> => {
 
   const { recordType } = parsed.data;
 
-  const fileIds = [
-    ...new Set(
-      store.recordAttachments
-        .filter((a) => a.recordType === recordType)
-        .map((a) => a.fileId)
-    ),
-  ];
+  const fileIdsRes = await pool.query<{ file_id: string }>(
+    "SELECT DISTINCT file_id FROM record_attachments WHERE record_type = $1",
+    [recordType],
+  );
+  const fileIds = fileIdsRes.rows.map((r) => r.file_id);
 
   if (fileIds.length === 0) {
     res.json({
@@ -48,7 +47,7 @@ router.post("/netsuite/refresh-stubs", async (req, res): Promise<void> => {
     const stubMap = await queryStubStatusForRecordType(recordType, fileIds);
     let updated = 0;
     for (const [fileId, hasStub] of stubMap.entries()) {
-      updated += updateStubStatus(fileId, hasStub);
+      updated += await updateStubStatus(fileId, hasStub);
     }
 
     res.json({

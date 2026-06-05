@@ -31,9 +31,9 @@ router.post("/data/upload", async (req, res): Promise<void> => {
   let rowCount = 0;
 
   if (type === "all_files") {
-    rowCount = parseAllFiles(content);
+    rowCount = await parseAllFiles(content);
   } else if (type === "record_attachments") {
-    rowCount = parseRecordAttachments(content);
+    rowCount = await parseRecordAttachments(content);
   } else {
     res.status(400).json({ error: "Invalid type. Must be 'all_files' or 'record_attachments'" });
     return;
@@ -43,11 +43,11 @@ router.post("/data/upload", async (req, res): Promise<void> => {
 });
 
 router.get("/data/status", async (_req, res): Promise<void> => {
-  res.json(getDataStatus());
+  res.json(await getDataStatus());
 });
 
 router.get("/data/record-types", async (_req, res): Promise<void> => {
-  res.json(getRecordTypes());
+  res.json(await getRecordTypes());
 });
 
 router.get("/data/records", async (req, res): Promise<void> => {
@@ -58,7 +58,7 @@ router.get("/data/records", async (req, res): Promise<void> => {
   }
 
   const { recordType, search, stubStatus, sort, limit, offset } = parsed.data;
-  const result = getRecords({
+  const result = await getRecords({
     recordType: recordType ?? undefined,
     search: search ?? undefined,
     stubStatus: stubStatus ?? undefined,
@@ -77,7 +77,7 @@ router.get("/data/records/:recordId/files", async (req, res): Promise<void> => {
     return;
   }
 
-  const files = getRecordFiles(params.data.recordId);
+  const files = await getRecordFiles(params.data.recordId);
   if (files === null) {
     res.status(404).json({ error: "Record not found" });
     return;
@@ -94,7 +94,7 @@ router.get("/data/files", async (req, res): Promise<void> => {
   }
 
   const { folderId, search, stubStatus, limit, offset } = parsed.data;
-  const result = getAllFiles({
+  const result = await getAllFiles({
     folderId: folderId ?? undefined,
     search: search ?? undefined,
     stubStatus: stubStatus ?? undefined,
@@ -109,15 +109,15 @@ router.get("/data/verification", async (req, res): Promise<void> => {
   const recordType = typeof req.query.recordType === "string" ? req.query.recordType : undefined;
   const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 500;
   const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
-  res.json(getVerificationItems({ recordType, limit, offset }));
+  res.json(await getVerificationItems({ recordType, limit, offset }));
 });
 
 router.get("/data/summary", async (_req, res): Promise<void> => {
-  res.json(getDashboardSummary());
+  res.json(await getDashboardSummary());
 });
 
 router.get("/data/stub-coverage", async (_req, res): Promise<void> => {
-  res.json(getStubCoverageByType());
+  res.json(await getStubCoverageByType());
 });
 
 export default router;
