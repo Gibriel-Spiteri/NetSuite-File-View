@@ -401,7 +401,7 @@ export async function getRecordFiles(recordId: string) {
       fileId: r.file_id,
       fileName: r.file_name,
       fileType: r.file_type,
-      sizeBytes: r.size_bytes,
+      sizeBytes: Number(r.size_bytes) || 0,
       hasStub: r.has_stub,
       isStubFile,
       stubFileName,
