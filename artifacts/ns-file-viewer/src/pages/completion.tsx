@@ -17,11 +17,12 @@ import { UploadCloud, FileCheck2, AlertCircle, Trash2, CheckCircle2, ArrowUpDown
 type SortKey = "recordType" | "totalOrigs" | "deletedCount" | "remainingCount" | "errorCount" | "coveragePercent";
 type SortDir = "asc" | "desc";
 
-const STORAGE_KEY = "completion-manually-done";
+const STORAGE_KEY_DONE = "completion-manually-done";
+const STORAGE_KEY_NOTES = "completion-notes";
 
 function loadManuallyDone(): Set<string> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY_DONE);
     return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
   } catch {
     return new Set();
@@ -30,7 +31,22 @@ function loadManuallyDone(): Set<string> {
 
 function saveManuallyDone(set: Set<string>) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
+    localStorage.setItem(STORAGE_KEY_DONE, JSON.stringify([...set]));
+  } catch { /* ignore */ }
+}
+
+function loadNotes(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_NOTES);
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveNotes(notes: Record<string, string>) {
+  try {
+    localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(notes));
   } catch { /* ignore */ }
 }
 
@@ -46,6 +62,7 @@ export function Completion() {
   const [sortKey, setSortKey] = useState<SortKey>("deletedCount");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [manuallyDone, setManuallyDone] = useState<Set<string>>(loadManuallyDone);
+  const [notes, setNotes] = useState<Record<string, string>>(loadNotes);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetCompletionQueryKey() });
 
@@ -64,6 +81,16 @@ export function Completion() {
       if (next.has(recordType)) next.delete(recordType);
       else next.add(recordType);
       saveManuallyDone(next);
+      return next;
+    });
+  }, []);
+
+  const handleNote = useCallback((recordType: string, value: string) => {
+    setNotes((prev) => {
+      const next = { ...prev };
+      if (value.trim()) next[recordType] = value;
+      else delete next[recordType];
+      saveNotes(next);
       return next;
     });
   }, []);
@@ -284,13 +311,14 @@ export function Completion() {
                 <SortHead col="errorCount" label="Errors" right />
                 <SortHead col="coveragePercent" label="Coverage" right />
                 <TableHead>State</TableHead>
+                <TableHead className="min-w-[180px]">Notes</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
               ) : !sorted.length ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No record attachments loaded yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No record attachments loaded yet.</TableCell></TableRow>
               ) : (
                 sorted.map((row) => {
                   const done = manuallyDone.has(row.recordType);
@@ -325,6 +353,15 @@ export function Completion() {
                         <CoverageBar percent={row.coveragePercent} />
                       </TableCell>
                       <TableCell>{stateBadge(row)}</TableCell>
+                      <TableCell>
+                        <input
+                          type="text"
+                          value={notes[row.recordType] ?? ""}
+                          onChange={(e) => handleNote(row.recordType, e.target.value)}
+                          placeholder="Add a note…"
+                          className="w-full min-w-[160px] bg-transparent border-0 border-b border-transparent hover:border-muted-foreground/40 focus:border-primary focus:outline-none text-xs py-0.5 placeholder:text-muted-foreground/50 transition-colors"
+                        />
+                      </TableCell>
                     </TableRow>
                   );
                 })
