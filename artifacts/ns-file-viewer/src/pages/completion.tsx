@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import {
   useGetCompletion,
   useUploadData,
@@ -8,10 +8,31 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { UploadCloud, FileCheck2, AlertCircle, Trash2, CheckCircle2 } from "lucide-react";
+import { UploadCloud, FileCheck2, AlertCircle, Trash2, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+
+type SortKey = "recordType" | "totalOrigs" | "deletedCount" | "remainingCount" | "errorCount" | "coveragePercent";
+type SortDir = "asc" | "desc";
+
+const STORAGE_KEY = "completion-manually-done";
+
+function loadManuallyDone(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveManuallyDone(set: Set<string>) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
+  } catch { /* ignore */ }
+}
 
 export function Completion() {
   const { data, isLoading } = useGetCompletion();
@@ -22,7 +43,30 @@ export function Completion() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
+  const [sortKey, setSortKey] = useState<SortKey>("deletedCount");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [manuallyDone, setManuallyDone] = useState<Set<string>>(loadManuallyDone);
+
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetCompletionQueryKey() });
+
+  const handleSort = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "recordType" ? "asc" : "desc");
+    }
+  };
+
+  const toggleDone = useCallback((recordType: string) => {
+    setManuallyDone((prev) => {
+      const next = new Set(prev);
+      if (next.has(recordType)) next.delete(recordType);
+      else next.add(recordType);
+      saveManuallyDone(next);
+      return next;
+    });
+  }, []);
 
   const handleFiles = async (files: FileList | File[]) => {
     const list = Array.from(files);
@@ -58,12 +102,45 @@ export function Completion() {
     });
   };
 
-  const stateBadge = (row: { totalOrigs: number; deletedCount: number; errorCount: number }) => {
+  const sorted = data?.perType ? [...data.perType].sort((a, b) => {
+    const doneA = manuallyDone.has(a.recordType);
+    const doneB = manuallyDone.has(b.recordType);
+    if (doneA !== doneB) return doneA ? 1 : -1;
+    const av = a[sortKey];
+    const bv = b[sortKey];
+    const cmp = typeof av === "string"
+      ? av.localeCompare(bv as string)
+      : (av as number) - (bv as number);
+    return sortDir === "asc" ? cmp : -cmp;
+  }) : [];
+
+  const stateBadge = (row: { recordType: string; totalOrigs: number; deletedCount: number; errorCount: number }) => {
+    if (manuallyDone.has(row.recordType)) return <Badge className="bg-emerald-600 hover:bg-emerald-600">✓ Done</Badge>;
     if (row.deletedCount === 0) return <Badge variant="outline">Not started</Badge>;
     if (row.deletedCount >= row.totalOrigs) return <Badge className="bg-emerald-600 hover:bg-emerald-600">Complete</Badge>;
     if (row.errorCount > 0) return <Badge variant="destructive">In progress (errors)</Badge>;
     return <Badge variant="secondary">In progress</Badge>;
   };
+
+  const SortIcon = ({ col }: { col: SortKey }) => {
+    if (sortKey !== col) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
+    return sortDir === "asc"
+      ? <ArrowUp className="h-3 w-3 ml-1 text-primary" />
+      : <ArrowDown className="h-3 w-3 ml-1 text-primary" />;
+  };
+
+  const SortHead = ({ col, label, right }: { col: SortKey; label: string; right?: boolean }) => (
+    <TableHead
+      className={`cursor-pointer select-none hover:bg-muted/80 transition-colors ${right ? "text-right" : ""}`}
+      onClick={() => handleSort(col)}
+    >
+      <span className={`inline-flex items-center ${right ? "justify-end w-full" : ""}`}>
+        {label}<SortIcon col={col} />
+      </span>
+    </TableHead>
+  );
+
+  const manualDoneCount = sorted.filter((r) => manuallyDone.has(r.recordType)).length;
 
   return (
     <div className="space-y-6">
@@ -73,7 +150,7 @@ export function Completion() {
           icon={<FileCheck2 className="h-5 w-5 text-emerald-600" />}
           label="Deleted from cabinet"
           value={data?.overall.totalDeleted ?? 0}
-          sub={`${data?.overall.coveragePercent ?? 0}% of ${data?.overall.totalOrigs.toLocaleString() ?? 0} origs`}
+          sub={`${data?.overall.coveragePercent ?? 0}% of ${(data?.overall.totalOrigs ?? 0).toLocaleString()} origs`}
         />
         <SummaryCard
           icon={<UploadCloud className="h-5 w-5 text-sky-600" />}
@@ -179,55 +256,78 @@ export function Completion() {
 
       {/* Per-record-type table */}
       <Card>
-        <CardHeader>
-          <CardTitle>Progress by record type</CardTitle>
-          <CardDescription>
-            Origs attached to records of each type, and how many we've deleted. A file attached to
-            multiple types counts in each (deleting it advances every row simultaneously).
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-4 flex-wrap">
+          <div>
+            <CardTitle>Progress by record type</CardTitle>
+            <CardDescription className="mt-1">
+              Origs attached to records of each type, and how many we've deleted. A file attached to
+              multiple types counts in each (deleting it advances every row simultaneously).
+            </CardDescription>
+          </div>
+          {manualDoneCount > 0 && (
+            <div className="text-xs text-muted-foreground shrink-0 pt-1">
+              {manualDoneCount} manually marked done — pushed to bottom
+            </div>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
-                <TableHead>Record Type</TableHead>
-                <TableHead className="text-right">Total Origs</TableHead>
-                <TableHead className="text-right">Deleted</TableHead>
-                <TableHead className="text-right">Remaining</TableHead>
-                <TableHead className="text-right">Errors</TableHead>
-                <TableHead className="text-right">Coverage</TableHead>
+                <TableHead className="w-8 pl-4">
+                  <span className="sr-only">Done</span>
+                </TableHead>
+                <SortHead col="recordType" label="Record Type" />
+                <SortHead col="totalOrigs" label="Total Origs" right />
+                <SortHead col="deletedCount" label="Deleted" right />
+                <SortHead col="remainingCount" label="Remaining" right />
+                <SortHead col="errorCount" label="Errors" right />
+                <SortHead col="coveragePercent" label="Coverage" right />
                 <TableHead>State</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
-              ) : !data?.perType.length ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No record attachments loaded yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+              ) : !sorted.length ? (
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No record attachments loaded yet.</TableCell></TableRow>
               ) : (
-                data.perType.map((row) => (
-                  <TableRow key={row.recordType}>
-                    <TableCell className="font-medium text-xs">
-                      <Badge variant="outline">{row.recordType}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-xs">{row.totalOrigs.toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">
-                      <span className={row.deletedCount > 0 ? "text-emerald-600 font-semibold" : ""}>
-                        {row.deletedCount.toLocaleString()}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-xs">{row.remainingCount.toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">
-                      {row.errorCount > 0
-                        ? <span className="text-destructive font-semibold">{row.errorCount.toLocaleString()}</span>
-                        : <span className="text-muted-foreground">0</span>}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <CoverageBar percent={row.coveragePercent} />
-                    </TableCell>
-                    <TableCell>{stateBadge(row)}</TableCell>
-                  </TableRow>
-                ))
+                sorted.map((row) => {
+                  const done = manuallyDone.has(row.recordType);
+                  return (
+                    <TableRow
+                      key={row.recordType}
+                      className={done ? "opacity-50 bg-muted/30" : undefined}
+                    >
+                      <TableCell className="pl-4 pr-0">
+                        <Checkbox
+                          checked={done}
+                          onCheckedChange={() => toggleDone(row.recordType)}
+                          aria-label={`Mark ${row.recordType} as done`}
+                        />
+                      </TableCell>
+                      <TableCell className="font-medium text-xs">
+                        <Badge variant="outline" className={done ? "line-through" : ""}>{row.recordType}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">{row.totalOrigs.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        <span className={row.deletedCount > 0 ? "text-emerald-600 font-semibold" : ""}>
+                          {row.deletedCount.toLocaleString()}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">{row.remainingCount.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        {row.errorCount > 0
+                          ? <span className="text-destructive font-semibold">{row.errorCount.toLocaleString()}</span>
+                          : <span className="text-muted-foreground">0</span>}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <CoverageBar percent={row.coveragePercent} />
+                      </TableCell>
+                      <TableCell>{stateBadge(row)}</TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
