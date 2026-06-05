@@ -79,7 +79,11 @@ export function Verification() {
           type,
           records: recs,
           totalFiles: recs.reduce((n, r) => n + r.files.length, 0),
-          totalSizeBytes: recs.reduce((n, r) => n + r.files.reduce((s, f) => s + f.sizeBytes, 0), 0),
+          totalSizeBytes: (() => {
+            const seen = new Map<string, number>();
+            for (const r of recs) for (const f of r.files) if (!seen.has(f.fileId)) seen.set(f.fileId, f.sizeBytes);
+            return Array.from(seen.values()).reduce((s, n) => s + n, 0);
+          })(),
         };
       })
       .sort((a, b) => b.totalFiles - a.totalFiles);

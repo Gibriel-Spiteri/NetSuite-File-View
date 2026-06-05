@@ -334,7 +334,12 @@ export function getDashboardSummary() {
   const stubCoveragePercent =
     fileStubMap.size > 0 ? Math.round((filesWithStub / fileStubMap.size) * 10000) / 100 : 0;
 
-  const totalSizeBytes = store.recordAttachments.reduce((sum, a) => sum + (isStubFile(a) ? 0 : a.sizeBytes), 0);
+  const fileSizeMap = new Map<string, number>();
+  for (const att of store.recordAttachments) {
+    if (isStubFile(att)) continue;
+    if (!fileSizeMap.has(att.fileId)) fileSizeMap.set(att.fileId, att.sizeBytes);
+  }
+  const totalSizeBytes = Array.from(fileSizeMap.values()).reduce((s, n) => s + n, 0);
 
   return {
     totalFiles,

@@ -9,14 +9,16 @@ export function Dashboard() {
   const { data: coverage, isLoading: isCoverageLoading } = useGetStubCoverage();
 
   if (isSummaryLoading || isCoverageLoading) {
-    return <div className="animate-pulse space-y-4">
-      <div className="h-32 bg-muted rounded-lg" />
-      <div className="h-64 bg-muted rounded-lg" />
-    </div>;
+    return (
+      <div className="animate-pulse space-y-4">
+        <div className="h-32 bg-muted rounded-lg" />
+        <div className="h-64 bg-muted rounded-lg" />
+      </div>
+    );
   }
 
-  if (!summary) {
-    return <div className="text-center text-muted-foreground p-8">No data loaded yet.</div>;
+  if (!summary || !summary.totalFiles) {
+    return <div className="text-center text-muted-foreground p-8">No data loaded yet. Upload data on the <a href="/upload" className="underline">Data Sources</a> page.</div>;
   }
 
   return (
@@ -40,7 +42,7 @@ export function Dashboard() {
                 <BarChart data={coverage} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                   <XAxis dataKey="recordType" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(val) => `${val}%`} />
+                  <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(val) => `${val}%`} domain={[0, 100]} />
                   <Tooltip
                     content={({ active, payload }) => {
                       if (!active || !payload?.length) return null;
