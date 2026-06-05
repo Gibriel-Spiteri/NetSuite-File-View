@@ -18,6 +18,7 @@ export * from './healthStatus';
 export * from './listAllFilesParams';
 export * from './listAllFilesStubStatus';
 export * from './listRecordsParams';
+export * from './listRecordsSort';
 export * from './listRecordsStubStatus';
 export * from './netsuiteStatus';
 export * from './recordItem';

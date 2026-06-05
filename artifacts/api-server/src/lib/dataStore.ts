@@ -122,10 +122,11 @@ export function getRecords(opts: {
   recordType?: string;
   search?: string;
   stubStatus?: string;
+  sort?: string;
   limit?: number;
   offset?: number;
 }) {
-  const { recordType, search, stubStatus, limit = 50, offset = 0 } = opts;
+  const { recordType, search, stubStatus, sort, limit = 50, offset = 0 } = opts;
 
   const recordMap = new Map<string, { recordId: string; recordName: string; recordType: string; recordStatus: string; fileCount: number; stubCount: number; missingStubCount: number }>();
 
@@ -169,6 +170,16 @@ export function getRecords(opts: {
     records = records.filter((r) => r.stubCount > 0 && r.missingStubCount === 0);
   } else if (stubStatus === "missing_stub") {
     records = records.filter((r) => r.missingStubCount > 0);
+  }
+
+  if (sort === "missing_stubs_desc") {
+    records.sort((a, b) => b.missingStubCount - a.missingStubCount);
+  } else if (sort === "missing_stubs_asc") {
+    records.sort((a, b) => a.missingStubCount - b.missingStubCount);
+  } else if (sort === "record_name") {
+    records.sort((a, b) => a.recordName.localeCompare(b.recordName));
+  } else if (sort === "record_type") {
+    records.sort((a, b) => a.recordType.localeCompare(b.recordType));
   }
 
   const total = records.length;

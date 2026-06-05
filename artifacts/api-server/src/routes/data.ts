@@ -56,11 +56,12 @@ router.get("/data/records", async (req, res): Promise<void> => {
     return;
   }
 
-  const { recordType, search, stubStatus, limit, offset } = parsed.data;
+  const { recordType, search, stubStatus, sort, limit, offset } = parsed.data;
   const result = getRecords({
     recordType: recordType ?? undefined,
     search: search ?? undefined,
     stubStatus: stubStatus ?? undefined,
+    sort: sort ?? undefined,
     limit: limit ?? 50,
     offset: offset ?? 0,
   });

@@ -97,6 +97,12 @@ paths:
           schema:
             type: string
             enum: [all, has_stub, missing_stub]
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [missing_stubs_desc, missing_stubs_asc, record_name, record_type]
         - name: limit
           in: query
           required: false

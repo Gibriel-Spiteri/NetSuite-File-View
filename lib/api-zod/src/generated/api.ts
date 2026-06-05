@@ -62,6 +62,7 @@ export const ListRecordsQueryParams = zod.object({
   "recordType": zod.coerce.string().optional(),
   "search": zod.coerce.string().optional(),
   "stubStatus": zod.enum(['all', 'has_stub', 'missing_stub']).optional(),
+  "sort": zod.enum(['missing_stubs_desc', 'missing_stubs_asc', 'record_name', 'record_type']).optional(),
   "limit": zod.coerce.number().optional(),
   "offset": zod.coerce.number().optional()
 })

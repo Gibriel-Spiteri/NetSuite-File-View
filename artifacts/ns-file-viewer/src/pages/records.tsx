@@ -1,13 +1,90 @@
 import { useState } from "react";
-import { useListRecords, useListRecordTypes, useGetRecordFiles, getGetRecordFilesQueryKey } from "@workspace/api-client-react";
-import type { ListRecordsParams, ListRecordsStubStatus } from "@workspace/api-client-react";
+import { useListRecords, useListRecordTypes, useGetRecordFiles, useGetNetsuiteStatus, getGetRecordFilesQueryKey } from "@workspace/api-client-react";
+import type { ListRecordsParams, ListRecordsStubStatus, ListRecordsSort } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
-import { Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Search, ExternalLink } from "lucide-react";
+
+function buildNetsuiteUrl(accountId: string, recordType: string, recordId: string): string {
+  const host = accountId.toLowerCase().replace(/_/g, "-");
+  const base = `https://${host}.app.netsuite.com`;
+
+  const txMap: Record<string, string> = {
+    salesorder: "salesord",
+    invoice: "custinvc",
+    estimate: "estimate",
+    cashsale: "cashsale",
+    cashrefund: "cashrefund",
+    itemfulfillment: "itemship",
+    purchaseorder: "purchord",
+    vendorbill: "vendbill",
+    vendorcredit: "vendcred",
+    creditmemo: "custcred",
+    itemreceipt: "itemrcpt",
+    expensereport: "exprept",
+    journalentry: "journal",
+    returnauthorization: "returnauth",
+    opportunity: "opprtnty",
+    quote: "estimate",
+  };
+
+  const type = recordType.toLowerCase();
+
+  if (txMap[type]) {
+    return `${base}/app/accounting/transactions/${txMap[type]}.nl?id=${recordId}`;
+  }
+
+  if (type === "campaign") {
+    return `${base}/app/crm/marketing/campaign.nl?id=${recordId}`;
+  }
+
+  if (type === "phonecall") {
+    return `${base}/app/crm/calendar/call.nl?id=${recordId}`;
+  }
+
+  if (type === "task") {
+    return `${base}/app/crm/calendar/task.nl?id=${recordId}`;
+  }
+
+  if (type === "customer" || type === "lead" || type === "prospect") {
+    return `${base}/app/common/entity/custjob.nl?id=${recordId}`;
+  }
+
+  if (type === "vendor") {
+    return `${base}/app/common/entity/vendor.nl?id=${recordId}`;
+  }
+
+  if (type === "employee") {
+    return `${base}/app/common/entity/employee.nl?id=${recordId}`;
+  }
+
+  if (type === "contact") {
+    return `${base}/app/common/entity/contact.nl?id=${recordId}`;
+  }
+
+  if (type.startsWith("customrecord")) {
+    return `${base}/app/common/custom/customrecordentry.nl?id=${recordId}`;
+  }
+
+  return `${base}/app/common/entity/record.nl?id=${recordId}`;
+}
+
+function NetsuiteLink({ recordType, recordId, accountId }: { recordType: string; recordId: string; accountId: string | undefined }) {
+  if (!accountId) return null;
+  const url = buildNetsuiteUrl(accountId, recordType, recordId);
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>
+      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0" title="Open in NetSuite">
+        <ExternalLink className="h-3.5 w-3.5" />
+      </Button>
+    </a>
+  );
+}
 
 export function Records() {
   const [params, setParams] = useState<ListRecordsParams>({
@@ -16,26 +93,35 @@ export function Records() {
     stubStatus: "all",
   });
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<{ recordType: string; recordName: string } | null>(null);
 
   const { data: recordTypes } = useListRecordTypes();
   const { data, isLoading } = useListRecords(params);
-  
+  const { data: nsStatus } = useGetNetsuiteStatus();
+  const accountId = nsStatus?.accountId || undefined;
+
+  const pagination = data ? {
+    start: (params.offset ?? 0) + 1,
+    end: Math.min((params.offset ?? 0) + (params.limit ?? 50), data.total),
+    total: data.total,
+  } : null;
+
   return (
     <div className="space-y-4">
       <Card>
-        <CardContent className="p-4 flex gap-4 items-center">
-          <div className="relative flex-1 max-w-sm">
+        <CardContent className="p-4 flex flex-wrap gap-3 items-center">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search records..." 
+            <Input
+              placeholder="Search records..."
               className="pl-9"
               value={params.search || ""}
               onChange={e => setParams(p => ({ ...p, search: e.target.value || undefined, offset: 0 }))}
             />
           </div>
-          
-          <Select 
-            value={params.recordType || "all"} 
+
+          <Select
+            value={params.recordType || "all"}
             onValueChange={v => setParams(p => ({ ...p, recordType: v === "all" ? undefined : v, offset: 0 }))}
           >
             <SelectTrigger className="w-[200px]">
@@ -49,17 +135,33 @@ export function Records() {
             </SelectContent>
           </Select>
 
-          <Select 
-            value={params.stubStatus || "all"} 
+          <Select
+            value={params.stubStatus || "all"}
             onValueChange={v => setParams(p => ({ ...p, stubStatus: v as ListRecordsStubStatus, offset: 0 }))}
           >
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Stub Status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="has_stub">Has Stub</SelectItem>
               <SelectItem value="missing_stub">Missing Stub</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={params.sort || "none"}
+            onValueChange={v => setParams(p => ({ ...p, sort: v === "none" ? undefined : v as ListRecordsSort, offset: 0 }))}
+          >
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Sort by..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Default order</SelectItem>
+              <SelectItem value="missing_stubs_desc">Missing stubs ↓</SelectItem>
+              <SelectItem value="missing_stubs_asc">Missing stubs ↑</SelectItem>
+              <SelectItem value="record_name">Name A–Z</SelectItem>
+              <SelectItem value="record_type">Type A–Z</SelectItem>
             </SelectContent>
           </Select>
         </CardContent>
@@ -75,19 +177,23 @@ export function Records() {
                 <TableHead>Name</TableHead>
                 <TableHead className="text-right">Files</TableHead>
                 <TableHead className="text-right">Missing Stubs</TableHead>
+                {accountId && <TableHead className="w-10" />}
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading records...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={accountId ? 6 : 5} className="text-center py-8 text-muted-foreground">Loading records...</TableCell></TableRow>
               ) : !data?.records.length ? (
-                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No records found matching filters.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={accountId ? 6 : 5} className="text-center py-8 text-muted-foreground">No records found matching filters.</TableCell></TableRow>
               ) : (
                 data.records.map(record => (
-                  <TableRow 
-                    key={record.recordId} 
+                  <TableRow
+                    key={record.recordId}
                     className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => setSelectedRecordId(record.recordId)}
+                    onClick={() => {
+                      setSelectedRecordId(record.recordId);
+                      setSelectedRecord({ recordType: record.recordType, recordName: record.recordName });
+                    }}
                   >
                     <TableCell className="font-medium text-xs"><Badge variant="outline">{record.recordType}</Badge></TableCell>
                     <TableCell className="font-mono text-xs">{record.recordId}</TableCell>
@@ -105,23 +211,64 @@ export function Records() {
                         <span className="text-muted-foreground">0</span>
                       )}
                     </TableCell>
+                    {accountId && (
+                      <TableCell className="text-center p-1">
+                        <NetsuiteLink accountId={accountId} recordType={record.recordType} recordId={record.recordId} />
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
         </div>
+
+        {pagination && pagination.total > (params.limit ?? 50) && (
+          <div className="flex items-center justify-between px-4 py-3 border-t text-sm text-muted-foreground">
+            <span>Showing {pagination.start}–{pagination.end} of {pagination.total.toLocaleString()}</span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={(params.offset ?? 0) === 0}
+                onClick={() => setParams(p => ({ ...p, offset: Math.max(0, (p.offset ?? 0) - (p.limit ?? 50)) }))}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pagination.end >= pagination.total}
+                onClick={() => setParams(p => ({ ...p, offset: (p.offset ?? 0) + (p.limit ?? 50) }))}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
-      <RecordDetailsSheet 
-        recordId={selectedRecordId} 
-        onClose={() => setSelectedRecordId(null)} 
+      <RecordDetailsSheet
+        recordId={selectedRecordId}
+        recordMeta={selectedRecord}
+        accountId={accountId}
+        onClose={() => { setSelectedRecordId(null); setSelectedRecord(null); }}
       />
     </div>
   );
 }
 
-function RecordDetailsSheet({ recordId, onClose }: { recordId: string | null, onClose: () => void }) {
+function RecordDetailsSheet({
+  recordId,
+  recordMeta,
+  accountId,
+  onClose,
+}: {
+  recordId: string | null;
+  recordMeta: { recordType: string; recordName: string } | null;
+  accountId: string | undefined;
+  onClose: () => void;
+}) {
   const { data: files, isLoading } = useGetRecordFiles(recordId || "", {
     query: { enabled: !!recordId, queryKey: getGetRecordFilesQueryKey(recordId || "") }
   });
@@ -130,12 +277,36 @@ function RecordDetailsSheet({ recordId, onClose }: { recordId: string | null, on
     <Sheet open={!!recordId} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="w-[500px] sm:max-w-[600px] overflow-y-auto">
         <SheetHeader className="mb-6">
-          <SheetTitle>Record Attachments</SheetTitle>
-          <SheetDescription>
-            Record ID: <span className="font-mono">{recordId}</span>
-          </SheetDescription>
+          <div className="flex items-start justify-between gap-3 pr-6">
+            <div className="min-w-0">
+              <SheetTitle>Record Attachments</SheetTitle>
+              <SheetDescription className="mt-1">
+                {recordMeta && (
+                  <span className="mr-2">
+                    <Badge variant="outline" className="text-xs mr-1">{recordMeta.recordType}</Badge>
+                    {recordMeta.recordName}
+                  </span>
+                )}
+                <br />
+                ID: <span className="font-mono">{recordId}</span>
+              </SheetDescription>
+            </div>
+            {accountId && recordId && recordMeta && (
+              <a
+                href={buildNetsuiteUrl(accountId, recordMeta.recordType, recordId)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 mt-1"
+              >
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open in NetSuite
+                </Button>
+              </a>
+            )}
+          </div>
         </SheetHeader>
-        
+
         {isLoading ? (
           <div className="py-8 text-center text-muted-foreground">Loading files...</div>
         ) : !files?.length ? (
@@ -146,20 +317,20 @@ function RecordDetailsSheet({ recordId, onClose }: { recordId: string | null, on
               <Card key={file.fileId}>
                 <CardContent className="p-4">
                   <div className="flex justify-between items-start gap-4">
-                    <div>
+                    <div className="min-w-0">
                       <div className="font-medium text-sm truncate" title={file.fileName}>{file.fileName}</div>
-                      <div className="text-xs text-muted-foreground mt-1 flex gap-2">
+                      <div className="text-xs text-muted-foreground mt-1 flex gap-2 flex-wrap">
                         <span>ID: <span className="font-mono">{file.fileId}</span></span>
                         <span>•</span>
                         <span>Size: {(file.sizeBytes / 1024).toFixed(1)} KB</span>
                       </div>
                     </div>
                     {file.isStubFile ? (
-                      <Badge variant="secondary">Stub File</Badge>
+                      <Badge variant="secondary" className="shrink-0">Stub File</Badge>
                     ) : file.hasStub ? (
-                      <Badge variant="default">Has Stub</Badge>
+                      <Badge variant="default" className="shrink-0">Has Stub</Badge>
                     ) : (
-                      <Badge variant="destructive">Missing Stub</Badge>
+                      <Badge variant="destructive" className="shrink-0">Missing Stub</Badge>
                     )}
                   </div>
                   {file.hasStub && file.stubFileName && (

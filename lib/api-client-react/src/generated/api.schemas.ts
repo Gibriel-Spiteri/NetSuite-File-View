@@ -133,6 +133,7 @@ export type ListRecordsParams = {
 recordType?: string;
 search?: string;
 stubStatus?: ListRecordsStubStatus;
+sort?: ListRecordsSort;
 limit?: number;
 offset?: number;
 };
@@ -144,6 +145,16 @@ export const ListRecordsStubStatus = {
   all: 'all',
   has_stub: 'has_stub',
   missing_stub: 'missing_stub',
+} as const;
+
+export type ListRecordsSort = typeof ListRecordsSort[keyof typeof ListRecordsSort];
+
+
+export const ListRecordsSort = {
+  missing_stubs_desc: 'missing_stubs_desc',
+  missing_stubs_asc: 'missing_stubs_asc',
+  record_name: 'record_name',
+  record_type: 'record_type',
 } as const;
 
 export type ListAllFilesParams = {
