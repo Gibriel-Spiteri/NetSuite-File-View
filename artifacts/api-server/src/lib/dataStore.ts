@@ -660,11 +660,62 @@ function streamInsertRecordAttachmentsFromPath(filePath: string): Promise<number
   });
 }
 
-export async function loadDataFromDisk(): Promise<void> {
+function resolveDataDir(): string {
   const workspaceRoot = process.cwd().endsWith(path.join("artifacts", "api-server"))
     ? path.resolve(process.cwd(), "../..")
     : process.cwd();
-  const dataDir = path.resolve(workspaceRoot, "data");
+  return path.resolve(workspaceRoot, "data");
+}
+
+export async function reloadDataFromDisk(): Promise<{ allFilesCount: number; recordAttachmentsCount: number; durationMs: number }> {
+  const start = Date.now();
+  const dataDir = resolveDataDir();
+
+  if (!fs.existsSync(dataDir)) {
+    return { allFilesCount: 0, recordAttachmentsCount: 0, durationMs: Date.now() - start };
+  }
+
+  const allFilesGlob = fs
+    .readdirSync(dataDir)
+    .filter((f) => f.startsWith("all_files_") && f.endsWith(".txt"))
+    .map((f) => path.join(dataDir, f))
+    .sort();
+
+  let allFilesCount = 0;
+  if (allFilesGlob.length > 0) {
+    logger.info({ parts: allFilesGlob.length }, "reload: loading all_files from disk");
+    await db.execute(sql`TRUNCATE all_files CASCADE`);
+    const allParts = await Promise.all(allFilesGlob.map(streamParseAllFilesFromPath));
+    const combined = allParts.flat();
+    await upsertAllFiles(combined);
+    allFilesCount = combined.length;
+    logger.info({ count: allFilesCount }, "reload: all_files done");
+  }
+
+  const attachmentParts = fs
+    .readdirSync(dataDir)
+    .filter((f) => f.startsWith("record-attachments") && f.endsWith(".csv"))
+    .map((f) => path.join(dataDir, f))
+    .sort();
+
+  let recordAttachmentsCount = 0;
+  if (attachmentParts.length > 0) {
+    logger.info({ parts: attachmentParts.length }, "reload: streaming record-attachments from disk");
+    await pool.query("TRUNCATE record_attachments");
+    for (const part of attachmentParts) {
+      const count = await streamInsertRecordAttachmentsFromPath(part);
+      recordAttachmentsCount += count;
+      logger.info({ file: path.basename(part), count }, "reload: part done");
+    }
+    logger.info({ count: recordAttachmentsCount }, "reload: record-attachments done");
+  }
+
+  invalidateSummaryCache();
+  return { allFilesCount, recordAttachmentsCount, durationMs: Date.now() - start };
+}
+
+export async function loadDataFromDisk(): Promise<void> {
+  const dataDir = resolveDataDir();
 
   if (!fs.existsSync(dataDir)) {
     logger.info("No data directory found, skipping disk load");

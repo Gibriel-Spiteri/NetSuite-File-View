@@ -27,6 +27,7 @@ export * from './recordListResponse';
 export * from './recordTypeSummary';
 export * from './refreshStubInput';
 export * from './refreshStubResult';
+export * from './reloadDataResult';
 export * from './stubCoverageByType';
 export * from './verificationItem';
 export * from './verificationResponse';

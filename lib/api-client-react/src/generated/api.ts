@@ -35,6 +35,7 @@ import type {
   RecordTypeSummary,
   RefreshStubInput,
   RefreshStubResult,
+  ReloadDataResult,
   StubCoverageByType,
   VerificationResponse
 } from './api.schemas';
@@ -681,6 +682,76 @@ export function useGetVerificationItems<TData = Awaited<ReturnType<typeof getVer
 
 
 
+
+export const getReloadDataUrl = () => {
+
+
+
+
+  return `/api/data/reload`
+}
+
+/**
+ * @summary Reload all data from disk files (truncates DB and re-streams /data/ directory)
+ */
+export const reloadData = async ( options?: RequestInit): Promise<ReloadDataResult> => {
+
+  return customFetch<ReloadDataResult>(getReloadDataUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getReloadDataMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reloadData>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reloadData>>, TError,void, TContext> => {
+
+const mutationKey = ['reloadData'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reloadData>>, void> = () => {
+
+
+          return  reloadData(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReloadDataMutationResult = NonNullable<Awaited<ReturnType<typeof reloadData>>>
+
+    export type ReloadDataMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reload all data from disk files (truncates DB and re-streams /data/ directory)
+ */
+export const useReloadData = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reloadData>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reloadData>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getReloadDataMutationOptions(options));
+    }
 
 export const getGetSummaryUrl = () => {
 

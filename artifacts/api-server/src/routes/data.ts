@@ -10,6 +10,7 @@ import {
   getDashboardSummary,
   getStubCoverageByType,
   getVerificationItems,
+  reloadDataFromDisk,
 } from "../lib/dataStore";
 import {
   UploadDataBody,
@@ -40,6 +41,11 @@ router.post("/data/upload", async (req, res): Promise<void> => {
   }
 
   res.json({ success: true, rowCount, type });
+});
+
+router.post("/data/reload", async (_req, res): Promise<void> => {
+  const result = await reloadDataFromDisk();
+  res.json(result);
 });
 
 router.get("/data/status", async (_req, res): Promise<void> => {

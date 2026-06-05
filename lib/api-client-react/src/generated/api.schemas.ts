@@ -9,6 +9,12 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface ReloadDataResult {
+  allFilesCount: number;
+  recordAttachmentsCount: number;
+  durationMs: number;
+}
+
 export type DataUploadInputType = typeof DataUploadInputType[keyof typeof DataUploadInputType];
 
 

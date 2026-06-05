@@ -213,6 +213,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/VerificationResponse"
 
+  /data/reload:
+    post:
+      operationId: reloadData
+      tags: [data]
+      summary: Reload all data from disk files (truncates DB and re-streams /data/ directory)
+      responses:
+        "200":
+          description: Reload complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReloadDataResult"
+
   /data/summary:
     get:
       operationId: getSummary
@@ -281,6 +294,17 @@ components:
       properties:
         status:
           type: string
+
+    ReloadDataResult:
+      type: object
+      required: [allFilesCount, recordAttachmentsCount, durationMs]
+      properties:
+        allFilesCount:
+          type: integer
+        recordAttachmentsCount:
+          type: integer
+        durationMs:
+          type: integer
 
     DataUploadInput:
       type: object

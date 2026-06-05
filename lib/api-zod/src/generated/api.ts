@@ -155,6 +155,16 @@ export const GetVerificationItemsResponse = zod.object({
 
 
 /**
+ * @summary Reload all data from disk files (truncates DB and re-streams /data/ directory)
+ */
+export const ReloadDataResponse = zod.object({
+  "allFilesCount": zod.number(),
+  "recordAttachmentsCount": zod.number(),
+  "durationMs": zod.number()
+})
+
+
+/**
  * @summary Get dashboard summary stats
  */
 export const GetSummaryResponse = zod.object({
