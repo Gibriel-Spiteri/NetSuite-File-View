@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { loadDataFromDisk } from "./lib/dataStore";
 
 const rawPort = process.env["PORT"];
 
@@ -22,4 +23,8 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  loadDataFromDisk().catch((e) => {
+    logger.error({ err: e }, "Failed to load data from disk");
+  });
 });

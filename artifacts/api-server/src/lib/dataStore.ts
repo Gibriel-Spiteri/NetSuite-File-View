@@ -1,3 +1,6 @@
+import * as fs from "fs";
+import * as readline from "readline";
+import * as path from "path";
 import { logger } from "./logger";
 
 export interface AllFileRecord {
@@ -60,7 +63,8 @@ export function parseRecordAttachments(content: string): number {
     const [recordType, recordId, recordName, fileId, fileName, sizeBytesStr, fileType, hasStubStr] = parts.map((p) => p.trim());
     if (!recordType || recordType === "record_type") continue;
     const sizeBytes = parseInt(sizeBytesStr, 10) || 0;
-    const hasStub = hasStubStr?.toLowerCase() === "true" || hasStubStr === "1";
+    const norm = hasStubStr?.toLowerCase();
+    const hasStub = norm === "true" || norm === "1" || norm === "yes";
     records.push({ recordType, recordId, recordName, fileId, fileName, sizeBytes, fileType, hasStub });
   }
 
@@ -316,6 +320,68 @@ export function updateStubStatus(fileId: string, hasStub: boolean) {
     }
   }
   return updated;
+}
+
+function streamParseAllFilesFromPath(filePath: string): Promise<AllFileRecord[]> {
+  return new Promise((resolve, reject) => {
+    const records: AllFileRecord[] = [];
+    const rl = readline.createInterface({ input: fs.createReadStream(filePath), crlfDelay: Infinity });
+    rl.on("line", (line) => {
+      const parts = line.split("|");
+      if (parts.length < 4) return;
+      const [fileId, fileName, folderId, folderName] = parts.map((p) => p.trim());
+      if (!fileId || fileId === "fileId") return;
+      records.push({ fileId, fileName, folderId, folderName });
+    });
+    rl.on("close", () => resolve(records));
+    rl.on("error", reject);
+  });
+}
+
+function streamParseRecordAttachmentsFromPath(filePath: string): Promise<RecordAttachment[]> {
+  return new Promise((resolve, reject) => {
+    const records: RecordAttachment[] = [];
+    const rl = readline.createInterface({ input: fs.createReadStream(filePath), crlfDelay: Infinity });
+    rl.on("line", (line) => {
+      const parts = line.split(",");
+      if (parts.length < 8) return;
+      const [recordType, recordId, recordName, fileId, fileName, sizeBytesStr, fileType, hasStubStr] = parts.map((p) => p.trim());
+      if (!recordType || recordType === "record_type") return;
+      const sizeBytes = parseInt(sizeBytesStr, 10) || 0;
+      const norm = hasStubStr?.toLowerCase();
+      const hasStub = norm === "true" || norm === "1" || norm === "yes";
+      records.push({ recordType, recordId, recordName, fileId, fileName, sizeBytes, fileType, hasStub });
+    });
+    rl.on("close", () => resolve(records));
+    rl.on("error", reject);
+  });
+}
+
+export async function loadDataFromDisk(): Promise<void> {
+  const dataDir = path.resolve(process.cwd(), "../../data");
+
+  const allFilesParts = [
+    path.join(dataDir, "all_files_20260604T213706Z.part01.txt"),
+    path.join(dataDir, "all_files_20260604T213706Z.part02.txt"),
+  ].filter((p) => fs.existsSync(p));
+
+  const attachmentsPath = path.join(dataDir, "record-attachments.csv");
+
+  if (allFilesParts.length > 0) {
+    logger.info({ parts: allFilesParts.length }, "Loading all_files from disk...");
+    const allParts = await Promise.all(allFilesParts.map(streamParseAllFilesFromPath));
+    const combined = allParts.flat();
+    store.allFiles = new Map(combined.map((r) => [r.fileId, r]));
+    store.allFilesLoaded = true;
+    logger.info({ count: store.allFiles.size }, "all_files loaded from disk");
+  }
+
+  if (fs.existsSync(attachmentsPath)) {
+    logger.info("Loading record-attachments from disk...");
+    store.recordAttachments = await streamParseRecordAttachmentsFromPath(attachmentsPath);
+    store.recordAttachmentsLoaded = true;
+    logger.info({ count: store.recordAttachments.length }, "record-attachments loaded from disk");
+  }
 }
 
 export { store };
