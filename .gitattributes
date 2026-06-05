@@ -1,1 +1,4 @@
 attached_assets/record-attachments_1780664989471.csv filter=lfs diff=lfs merge=lfs -text
+data/record-attachments.part01.csv filter=lfs diff=lfs merge=lfs -text
+data/record-attachments.part02.csv filter=lfs diff=lfs merge=lfs -text
+data/record-attachments.part03.csv filter=lfs diff=lfs merge=lfs -text

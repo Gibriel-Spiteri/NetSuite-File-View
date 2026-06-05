@@ -121,12 +121,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/RecordListResponse"
 
-  /data/records/{recordId}/files:
+  /data/records/{recordType}/{recordId}/files:
     get:
       operationId: getRecordFiles
       tags: [data]
       summary: Get all files attached to a specific record
       parameters:
+        - name: recordType
+          in: path
+          required: true
+          schema:
+            type: string
         - name: recordId
           in: path
           required: true

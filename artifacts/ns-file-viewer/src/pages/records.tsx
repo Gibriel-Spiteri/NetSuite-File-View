@@ -215,8 +215,14 @@ function RecordDetailsSheet({
   accountId: string | undefined;
   onClose: () => void;
 }) {
-  const { data: files, isLoading } = useGetRecordFiles(recordId || "", {
-    query: { enabled: !!recordId, queryKey: getGetRecordFilesQueryKey(recordId || "") }
+  // recordType is part of the lookup key — recordId alone collides
+  // between, e.g., vendor 279727 and customrecord_delivery 279727.
+  const recordType = recordMeta?.recordType ?? "";
+  const { data: files, isLoading } = useGetRecordFiles(recordType, recordId || "", {
+    query: {
+      enabled: !!recordType && !!recordId,
+      queryKey: getGetRecordFilesQueryKey(recordType, recordId || ""),
+    },
   });
 
   return (

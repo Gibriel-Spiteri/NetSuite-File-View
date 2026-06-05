@@ -22,6 +22,38 @@ export interface RecordAttachment {
   sizeBytes: number;
   fileType: string;
   hasStub: boolean;
+  isStub: boolean;
+}
+
+// RFC 4180-aware CSV line splitter. Required because file names in the
+// dataset contain commas inside quoted fields (e.g. "20220316_For over
+// 55 years, Jet Sanitation Service Corp. has be.pdf"). A naive
+// line.split(",") shifts every column after the first internal comma —
+// names truncate, sizes become 0, hasStub/isStub flip wrong.
+function parseCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let buf = "";
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line.charAt(i);
+    if (inQ) {
+      if (c === '"') {
+        if (line.charAt(i + 1) === '"') { buf += '"'; i++; }
+        else { inQ = false; }
+      } else { buf += c; }
+    } else {
+      if (c === ",") { out.push(buf); buf = ""; }
+      else if (c === '"' && buf === "") { inQ = true; }
+      else { buf += c; }
+    }
+  }
+  out.push(buf);
+  return out;
+}
+
+function parseYesNo(s: string | undefined): boolean {
+  const v = s?.toLowerCase();
+  return v === "true" || v === "1" || v === "yes";
 }
 
 const BATCH_SIZE = 500;
@@ -118,14 +150,26 @@ function parseRecordAttachmentsContent(content: string): RecordAttachment[] {
   const lines = content.split(/\r?\n/).filter((l) => l.trim());
   const records: RecordAttachment[] = [];
   for (const line of lines) {
-    const parts = line.split(",");
+    const parts = parseCsvLine(line);
     if (parts.length < 9) continue;
-    const [recordType, recordId, recordName, recordStatus, fileId, fileName, sizeBytesStr, fileType, hasStubStr] = parts.map((p) => p.trim());
+    const recordType = parts[0];
     if (!recordType || recordType === "record_type") continue;
-    const sizeBytes = parseInt(sizeBytesStr, 10) || 0;
-    const norm = hasStubStr?.toLowerCase();
-    const hasStub = norm === "true" || norm === "1" || norm === "yes";
-    records.push({ recordType, recordId, recordName, recordStatus: recordStatus ?? "", fileId, fileName, sizeBytes, fileType, hasStub });
+    records.push({
+      recordType,
+      recordId: parts[1],
+      recordName: parts[2],
+      recordStatus: parts[3] ?? "",
+      fileId: parts[4],
+      fileName: parts[5],
+      sizeBytes: parseInt(parts[6], 10) || 0,
+      fileType: parts[7],
+      hasStub: parseYesNo(parts[8]),
+      // Column 10 (is_stub) was added 2026-06-05. Falls back to the old
+      // HTMLDOC heuristic if the column is missing so older CSV uploads
+      // don't break — but those uploads will mis-classify any
+      // non-migration .html files.
+      isStub: parts.length >= 10 ? parseYesNo(parts[9]) : parts[7] === "HTMLDOC",
+    });
   }
   return records;
 }
@@ -373,7 +417,9 @@ export async function getRecords(opts: {
   };
 }
 
-export async function getRecordFiles(recordId: string) {
+// `recordId` is unique within a `recordType`, NOT globally (vendor 279727
+// and customrecord_delivery 279727 are different records). Filter by both.
+export async function getRecordFiles(recordType: string, recordId: string) {
   const result = await pool.query<{
     file_id: string;
     file_name: string;
@@ -388,8 +434,8 @@ export async function getRecordFiles(recordId: string) {
             af.folder_id, af.folder_name
      FROM record_attachments ra
      LEFT JOIN all_files af ON ra.file_id = af.file_id
-     WHERE ra.record_id = $1`,
-    [recordId],
+     WHERE ra.record_type = $1 AND ra.record_id = $2`,
+    [recordType, recordId],
   );
 
   if (result.rows.length === 0) return null;
@@ -699,9 +745,9 @@ function streamInsertRecordAttachmentsFromPath(filePath: string): Promise<number
     };
 
     rl.on("line", (line) => {
-      const parts = line.split(",");
+      const parts = parseCsvLine(line);
       if (parts.length < 9) return;
-      const [recordType, recordId, recordName, recordStatus, fileId, fileName, sizeBytesStr, fileType, hasStubStr] = parts.map((p) => p.trim());
+      const recordType = parts[0];
       if (!recordType || recordType === "record_type") return;
       const sizeBytes = parseInt(sizeBytesStr, 10) || 0;
       const norm = hasStubStr?.toLowerCase();
