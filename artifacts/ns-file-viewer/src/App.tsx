@@ -12,7 +12,14 @@ import { Verification } from "./pages/verification";
 import { Upload } from "./pages/upload";
 import { NetsuiteConfig } from "./pages/netsuite";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,
+      gcTime: 15 * 60 * 1000,
+    },
+  },
+});
 
 function Router() {
   return (

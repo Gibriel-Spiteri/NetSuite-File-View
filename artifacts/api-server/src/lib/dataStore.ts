@@ -26,6 +26,17 @@ export interface RecordAttachment {
 
 const BATCH_SIZE = 500;
 
+// ── Simple in-memory cache ──────────────────────────────────────────────────
+// These aggregation queries scan millions of rows; cache results until data changes.
+type CacheEntry<T> = { value: T; ts: number };
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const cache: { summary?: CacheEntry<Awaited<ReturnType<typeof _getDashboardSummary>>>; coverage?: CacheEntry<Awaited<ReturnType<typeof _getStubCoverageByType>>> } = {};
+
+export function invalidateSummaryCache() {
+  delete cache.summary;
+  delete cache.coverage;
+}
+
 async function upsertAllFiles(records: AllFileRecord[]): Promise<void> {
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const batch = records.slice(i, i + BATCH_SIZE);
@@ -48,6 +59,7 @@ async function upsertAllFiles(records: AllFileRecord[]): Promise<void> {
         },
       });
   }
+  invalidateSummaryCache();
 }
 
 async function upsertRecordAttachments(records: RecordAttachment[]): Promise<void> {
@@ -81,6 +93,7 @@ async function upsertRecordAttachments(records: RecordAttachment[]): Promise<voi
         },
       });
   }
+  invalidateSummaryCache();
 }
 
 function parseAllFilesContent(content: string): AllFileRecord[] {
@@ -450,7 +463,7 @@ export async function getAllFiles(opts: {
   };
 }
 
-export async function getDashboardSummary() {
+async function _getDashboardSummary() {
   const result = await pool.query<{
     total_files: string;
     total_records: string;
@@ -510,7 +523,15 @@ export async function getDashboardSummary() {
   };
 }
 
-export async function getStubCoverageByType() {
+export async function getDashboardSummary() {
+  const now = Date.now();
+  if (cache.summary && now - cache.summary.ts < CACHE_TTL_MS) return cache.summary.value;
+  const value = await _getDashboardSummary();
+  cache.summary = { value, ts: now };
+  return value;
+}
+
+async function _getStubCoverageByType() {
   const result = await pool.query<{
     record_type: string;
     file_count: string;
@@ -553,11 +574,20 @@ export async function getStubCoverageByType() {
   });
 }
 
+export async function getStubCoverageByType() {
+  const now = Date.now();
+  if (cache.coverage && now - cache.coverage.ts < CACHE_TTL_MS) return cache.coverage.value;
+  const value = await _getStubCoverageByType();
+  cache.coverage = { value, ts: now };
+  return value;
+}
+
 export async function updateStubStatus(fileId: string, hasStub: boolean): Promise<number> {
   const result = await pool.query<{ file_id: string }>(
     "UPDATE record_attachments SET has_stub = $1 WHERE file_id = $2 RETURNING file_id",
     [hasStub, fileId],
   );
+  invalidateSummaryCache();
   return result.rowCount ?? 0;
 }
 
@@ -662,14 +692,19 @@ export async function loadDataFromDisk(): Promise<void> {
     .sort();
 
   if (attachmentParts.length > 0) {
-    logger.info({ parts: attachmentParts.length }, "Loading record-attachments from disk...");
-    await pool.query("TRUNCATE record_attachments");
-    let totalAttachments = 0;
-    for (const part of attachmentParts) {
-      const count = await streamInsertRecordAttachmentsFromPath(part);
-      totalAttachments += count;
-      logger.info({ file: path.basename(part), count }, "record-attachments part loaded");
+    const { rows } = await pool.query<{ count: string }>("SELECT COUNT(*) AS count FROM record_attachments");
+    const existing = parseInt(rows[0]?.count ?? "0", 10);
+    if (existing > 0) {
+      logger.info({ count: existing }, "record-attachments already in DB, skipping disk load");
+    } else {
+      logger.info({ parts: attachmentParts.length }, "Loading record-attachments from disk (DB empty)...");
+      let totalAttachments = 0;
+      for (const part of attachmentParts) {
+        const count = await streamInsertRecordAttachmentsFromPath(part);
+        totalAttachments += count;
+        logger.info({ file: path.basename(part), count }, "record-attachments part loaded");
+      }
+      logger.info({ count: totalAttachments }, "record-attachments loaded from disk");
     }
-    logger.info({ count: totalAttachments }, "record-attachments loaded from disk");
   }
 }
