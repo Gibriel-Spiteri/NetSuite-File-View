@@ -311,6 +311,8 @@ components:
           type: integer
         hasStub:
           type: boolean
+        isStubFile:
+          type: boolean
         recordStatus:
           type: string
         stubFileName:

@@ -93,6 +93,7 @@ export const GetRecordFilesResponseItem = zod.object({
   "fileType": zod.string(),
   "sizeBytes": zod.number(),
   "hasStub": zod.boolean(),
+  "isStubFile": zod.boolean().optional(),
   "recordStatus": zod.string(),
   "stubFileName": zod.string().nullish(),
   "folderId": zod.string().nullish(),

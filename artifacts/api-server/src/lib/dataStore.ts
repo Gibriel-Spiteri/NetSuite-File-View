@@ -75,6 +75,11 @@ export function parseRecordAttachments(content: string): number {
   return records.length;
 }
 
+/** Stub files (.html HTMLDOC) are the stubs themselves — exclude from coverage calculations */
+function isStubFile(att: { fileType: string }): boolean {
+  return att.fileType === "HTMLDOC";
+}
+
 export function getDataStatus() {
   return {
     allFilesLoaded: store.allFilesLoaded,
@@ -93,6 +98,7 @@ export function getRecordTypes() {
     }
     const entry = typeMap.get(att.recordType)!;
     entry.recordCount.add(att.recordId);
+    if (isStubFile(att)) continue;
     entry.fileCount++;
     if (att.hasStub) {
       entry.stubCount++;
@@ -141,6 +147,7 @@ export function getRecords(opts: {
     const entry = recordMap.get(key)!;
     // Keep the first non-empty status we see
     if (!entry.recordStatus && att.recordStatus) entry.recordStatus = att.recordStatus;
+    if (isStubFile(att)) continue;
     entry.fileCount++;
     if (att.hasStub) {
       entry.stubCount++;
@@ -183,6 +190,7 @@ export function getRecordFiles(recordId: string) {
       fileType: att.fileType,
       sizeBytes: att.sizeBytes,
       hasStub: att.hasStub,
+      isStubFile: isStubFile(att),
       stubFileName,
       folderId: fileInfo?.folderId ?? null,
       folderName: fileInfo?.folderName ?? null,
@@ -254,15 +262,10 @@ export function getDashboardSummary() {
   const recordTypes = new Set(store.recordAttachments.map((a) => a.recordType));
   const totalRecordTypes = recordTypes.size;
 
-  const attachedFileIds = new Set<string>();
-  let stubFileCount = 0;
-
-  for (const att of store.recordAttachments) {
-    attachedFileIds.add(att.fileId);
-  }
-
+  // Exclude stub files themselves from coverage calculations
   const fileStubMap = new Map<string, boolean>();
   for (const att of store.recordAttachments) {
+    if (isStubFile(att)) continue;
     if (!fileStubMap.has(att.fileId)) {
       fileStubMap.set(att.fileId, att.hasStub);
     } else if (att.hasStub) {
@@ -270,14 +273,15 @@ export function getDashboardSummary() {
     }
   }
 
+  let stubFileCount = 0;
   for (const hasStub of fileStubMap.values()) {
     if (hasStub) stubFileCount++;
   }
 
   const filesWithStub = stubFileCount;
-  const filesMissingStub = attachedFileIds.size - filesWithStub;
+  const filesMissingStub = fileStubMap.size - filesWithStub;
   const stubCoveragePercent =
-    attachedFileIds.size > 0 ? Math.round((filesWithStub / attachedFileIds.size) * 10000) / 100 : 0;
+    fileStubMap.size > 0 ? Math.round((filesWithStub / fileStubMap.size) * 10000) / 100 : 0;
 
   return {
     totalFiles,
@@ -294,6 +298,7 @@ export function getStubCoverageByType() {
   const typeMap = new Map<string, { fileSet: Map<string, boolean> }>();
 
   for (const att of store.recordAttachments) {
+    if (isStubFile(att)) continue;
     if (!typeMap.has(att.recordType)) {
       typeMap.set(att.recordType, { fileSet: new Map() });
     }

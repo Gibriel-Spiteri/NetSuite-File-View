@@ -154,9 +154,13 @@ function RecordDetailsSheet({ recordId, onClose }: { recordId: string | null, on
                         <span>Size: {(file.sizeBytes / 1024).toFixed(1)} KB</span>
                       </div>
                     </div>
-                    <Badge variant={file.hasStub ? "default" : "destructive"}>
-                      {file.hasStub ? "Has Stub" : "Missing Stub"}
-                    </Badge>
+                    {file.isStubFile ? (
+                      <Badge variant="secondary">Stub File</Badge>
+                    ) : file.hasStub ? (
+                      <Badge variant="default">Has Stub</Badge>
+                    ) : (
+                      <Badge variant="destructive">Missing Stub</Badge>
+                    )}
                   </div>
                   {file.hasStub && file.stubFileName && (
                     <div className="mt-3 text-xs bg-muted p-2 rounded flex gap-2">

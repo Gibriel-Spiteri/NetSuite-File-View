@@ -12,6 +12,7 @@ export interface AttachedFile {
   fileType: string;
   sizeBytes: number;
   hasStub: boolean;
+  isStubFile?: boolean;
   recordStatus: string;
   /** @nullable */
   stubFileName?: string | null;
