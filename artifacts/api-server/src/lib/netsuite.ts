@@ -147,7 +147,7 @@ export function getNetsuiteStatus() {
   const configured = isConfigured();
   let accountId: string | null = null;
   try {
-    accountId = configured ? getAccountId() : null;
+    accountId = process.env.NETSUITE_ACCOUNT_ID ? getAccountId() : null;
   } catch {
     accountId = null;
   }
