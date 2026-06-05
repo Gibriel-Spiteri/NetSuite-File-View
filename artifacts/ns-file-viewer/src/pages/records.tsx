@@ -68,7 +68,7 @@ export function Records() {
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
               {recordTypes?.map(t => (
-                <SelectItem key={t.recordType} value={t.recordType}>{t.recordType} ({t.recordCount})</SelectItem>
+                <SelectItem key={t.recordType} value={t.recordType}>{t.recordType} ({t.recordCount} records · {t.fileCount} files · {formatBytes(t.totalSizeBytes)})</SelectItem>
               ))}
             </SelectContent>
           </Select>
