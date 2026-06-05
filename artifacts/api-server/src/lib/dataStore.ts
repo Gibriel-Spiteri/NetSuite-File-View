@@ -54,9 +54,25 @@ function parseYesNo(s: string | undefined): boolean {
   return v === "true" || v === "1" || v === "yes";
 }
 
+// Per-fileId Phase 3 delete-log status. Multi-log uploads merge by
+// fileId (last write wins), so re-runs (e.g. already_deleted following
+// deleted) settle cleanly without manual reset.
+export type DeletionStatus =
+  | "deleted"
+  | "already_deleted"
+  | "protected_stub_deleted"
+  | "protected_no_stub"
+  | "error:protected_stub_refused"
+  | "error:protected_stub_error"
+  | "error:delete"
+  | "error:bad_row"
+  | string; // tolerate forward-compat statuses
+
 interface DataStore {
   allFiles: Map<string, AllFileRecord>;
   recordAttachments: RecordAttachment[];
+  deletionLog: Map<string, DeletionStatus>;
+  deletionLogSources: string[]; // filenames or labels of uploaded logs
   allFilesLoaded: boolean;
   recordAttachmentsLoaded: boolean;
 }
@@ -64,9 +80,17 @@ interface DataStore {
 const store: DataStore = {
   allFiles: new Map(),
   recordAttachments: [],
+  deletionLog: new Map(),
+  deletionLogSources: [],
   allFilesLoaded: false,
   recordAttachmentsLoaded: false,
 };
+
+// Statuses that mean "the orig file is gone from the cabinet" — the only
+// states that count as Phase 3 progress. Protected-ext rows keep the
+// orig in place (only the stub got cleaned up), so they do NOT count
+// here; error rows obviously don't either.
+const DELETED_STATUSES = new Set<string>(["deleted", "already_deleted"]);
 
 export function parseAllFiles(content: string): number {
   const lines = content.split(/\r?\n/).filter((l) => l.trim());
@@ -124,6 +148,43 @@ export function parseRecordAttachments(content: string): number {
  *  one of our migration stubs). */
 function isStubFile(att: { isStub: boolean }): boolean {
   return att.isStub;
+}
+
+// Parses a Phase 3 delete log (`fileId|status\n`) and merges its rows
+// into store.deletionLog. Multiple uploads accumulate — same fileId in
+// a later log overrides the previous status, which is what we want for
+// "ran the M/R a second time and the row went from `error:delete` to
+// `deleted`" type situations. `source` is recorded so the UI can show
+// which logs have been ingested.
+export function parseDeletionLog(content: string, source: string): number {
+  const lines = content.split(/\r?\n/);
+  let added = 0;
+  let first = true;
+  for (const line of lines) {
+    if (!line) continue;
+    if (first) {
+      first = false;
+      if (line.startsWith("fileId|")) continue;
+    }
+    const i = line.indexOf("|");
+    if (i < 0) continue;
+    const fileId = line.substring(0, i).trim();
+    const status = line.substring(i + 1).trim();
+    if (!fileId || !/^\d+$/.test(fileId)) continue;
+    store.deletionLog.set(fileId, status);
+    added++;
+  }
+  if (source && !store.deletionLogSources.includes(source)) {
+    store.deletionLogSources.push(source);
+  }
+  logger.info({ source, added, totalEntries: store.deletionLog.size }, "Deletion log merged");
+  return added;
+}
+
+export function clearDeletionLog(): void {
+  store.deletionLog.clear();
+  store.deletionLogSources = [];
+  logger.info("Deletion log cleared");
 }
 
 export function getDataStatus() {
@@ -437,6 +498,111 @@ export function getStubCoverageByType() {
     .sort((a, b) => b.fileCount - a.fileCount);
 }
 
+// Per-recordType Phase 3 completion stats. For each recordType, counts
+// the distinct orig fileIds attached to records of that type, then
+// counts how many of those have a deletion-log row in DELETED_STATUSES.
+//
+// Note on overlapping coverage: an orig attached to BOTH `task` and
+// `salesorder` shows up in both buckets. When it's deleted, both
+// buckets advance — that's correct (deleting in NS detaches from every
+// holder system-wide). Sum of `totalOrigs` across types therefore
+// exceeds the distinct orig count account-wide.
+export function getCompletion() {
+  // recordType -> Set of distinct orig fileIds attached to records of that type
+  const origsByType = new Map<string, Set<string>>();
+  for (const att of store.recordAttachments) {
+    if (!att.hasStub || att.isStub) continue; // orig rows only
+    let set = origsByType.get(att.recordType);
+    if (!set) { set = new Set(); origsByType.set(att.recordType, set); }
+    set.add(att.fileId);
+  }
+
+  const perType: Array<{
+    recordType: string;
+    totalOrigs: number;
+    deletedCount: number;
+    remainingCount: number;
+    coveragePercent: number;
+    errorCount: number;
+    protectedCount: number;
+  }> = [];
+
+  // Statuses bucketed by category for the per-type breakdown.
+  const PROTECTED_STATUSES = new Set([
+    "protected_stub_deleted",
+    "protected_no_stub",
+    "error:protected_stub_refused",
+    "error:protected_stub_error",
+  ]);
+
+  for (const [recordType, origs] of origsByType) {
+    let deletedCount = 0;
+    let errorCount = 0;
+    let protectedCount = 0;
+    for (const fid of origs) {
+      const status = store.deletionLog.get(fid);
+      if (!status) continue;
+      if (DELETED_STATUSES.has(status)) deletedCount++;
+      else if (PROTECTED_STATUSES.has(status)) protectedCount++;
+      else if (status.startsWith("error")) errorCount++;
+    }
+    const totalOrigs = origs.size;
+    const remainingCount = totalOrigs - deletedCount - protectedCount;
+    const coveragePercent = totalOrigs > 0
+      ? Math.round((deletedCount / totalOrigs) * 10000) / 100
+      : 0;
+    perType.push({
+      recordType,
+      totalOrigs,
+      deletedCount,
+      remainingCount,
+      coveragePercent,
+      errorCount,
+      protectedCount,
+    });
+  }
+
+  perType.sort((a, b) => b.deletedCount - a.deletedCount || a.recordType.localeCompare(b.recordType));
+
+  // Account-wide totals — counted by DISTINCT fileId so each orig is
+  // tallied once even if it's attached to multiple types.
+  const allOrigs = new Set<string>();
+  for (const set of origsByType.values()) for (const fid of set) allOrigs.add(fid);
+  let totalDeleted = 0, totalErrors = 0, totalProtected = 0;
+  for (const fid of allOrigs) {
+    const status = store.deletionLog.get(fid);
+    if (!status) continue;
+    if (DELETED_STATUSES.has(status)) totalDeleted++;
+    else if (PROTECTED_STATUSES.has(status)) totalProtected++;
+    else if (status.startsWith("error")) totalErrors++;
+  }
+
+  // Distribution of every status seen in uploaded logs (whether or not
+  // the row maps back to a known orig). Lets the UI surface unexpected
+  // statuses.
+  const statusCounts: Record<string, number> = {};
+  for (const status of store.deletionLog.values()) {
+    statusCounts[status] = (statusCounts[status] ?? 0) + 1;
+  }
+
+  return {
+    perType,
+    overall: {
+      totalOrigs: allOrigs.size,
+      totalDeleted,
+      totalRemaining: allOrigs.size - totalDeleted - totalProtected,
+      totalErrors,
+      totalProtected,
+      coveragePercent: allOrigs.size > 0
+        ? Math.round((totalDeleted / allOrigs.size) * 10000) / 100
+        : 0,
+    },
+    deletionLogEntryCount: store.deletionLog.size,
+    sources: store.deletionLogSources,
+    statusCounts,
+  };
+}
+
 export function updateStubStatus(fileId: string, hasStub: boolean) {
   let updated = 0;
   for (const att of store.recordAttachments) {
@@ -519,6 +685,26 @@ export async function loadDataFromDisk(): Promise<void> {
     store.recordAttachments = allParts.flat();
     store.recordAttachmentsLoaded = true;
     logger.info({ count: store.recordAttachments.length }, "record-attachments loaded from disk");
+  }
+
+  // Phase 3 delete logs — optional. Drop any phase3_delete_log_*.txt into
+  // data/ (root or data/deletion-logs/) and we pick it up automatically.
+  const candidateDirs = [dataDir, path.join(dataDir, "deletion-logs")];
+  for (const d of candidateDirs) {
+    if (!fs.existsSync(d)) continue;
+    const logFiles = fs.readdirSync(d)
+      .filter((f) => f.startsWith("phase3_delete_log_") && f.endsWith(".txt"))
+      .map((f) => path.join(d, f))
+      .sort();
+    for (const lf of logFiles) {
+      try {
+        const content = fs.readFileSync(lf, "utf8");
+        const added = parseDeletionLog(content, path.basename(lf));
+        logger.info({ file: lf, added }, "Phase 3 deletion log loaded from disk");
+      } catch (e) {
+        logger.error({ file: lf, err: (e as Error).message }, "Failed to load deletion log");
+      }
+    }
   }
 }
 

@@ -121,6 +121,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/RecordListResponse"
 
+  /data/completion:
+    get:
+      operationId: getCompletion
+      tags: [data]
+      summary: Phase 3 completion stats per record type
+      responses:
+        "200":
+          description: Completion stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompletionResponse"
+
+  /data/deletion-log:
+    delete:
+      operationId: clearDeletionLog
+      tags: [data]
+      summary: Clear all loaded deletion log rows
+      responses:
+        "200":
+          description: Cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success]
+                properties:
+                  success:
+                    type: boolean
+
   /data/records/{recordType}/{recordId}/files:
     get:
       operationId: getRecordFiles
@@ -293,10 +323,52 @@ components:
       properties:
         type:
           type: string
-          enum: [all_files, record_attachments]
+          enum: [all_files, record_attachments, deletion_log]
         content:
           type: string
           description: Raw file content (CSV or pipe-delimited)
+        source:
+          type: string
+          description: Optional label for the upload — used for deletion_log to track which logs have been ingested
+
+    CompletionPerType:
+      type: object
+      required: [recordType, totalOrigs, deletedCount, remainingCount, coveragePercent, errorCount, protectedCount]
+      properties:
+        recordType: { type: string }
+        totalOrigs: { type: integer }
+        deletedCount: { type: integer }
+        remainingCount: { type: integer }
+        coveragePercent: { type: number }
+        errorCount: { type: integer }
+        protectedCount: { type: integer }
+
+    CompletionOverall:
+      type: object
+      required: [totalOrigs, totalDeleted, totalRemaining, totalErrors, totalProtected, coveragePercent]
+      properties:
+        totalOrigs: { type: integer }
+        totalDeleted: { type: integer }
+        totalRemaining: { type: integer }
+        totalErrors: { type: integer }
+        totalProtected: { type: integer }
+        coveragePercent: { type: number }
+
+    CompletionResponse:
+      type: object
+      required: [perType, overall, deletionLogEntryCount, sources, statusCounts]
+      properties:
+        perType:
+          type: array
+          items: { $ref: "#/components/schemas/CompletionPerType" }
+        overall: { $ref: "#/components/schemas/CompletionOverall" }
+        deletionLogEntryCount: { type: integer }
+        sources:
+          type: array
+          items: { type: string }
+        statusCounts:
+          type: object
+          additionalProperties: { type: integer }
 
     DataUploadResult:
       type: object

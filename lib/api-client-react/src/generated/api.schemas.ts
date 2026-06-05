@@ -15,12 +15,42 @@ export type DataUploadInputType = typeof DataUploadInputType[keyof typeof DataUp
 export const DataUploadInputType = {
   all_files: 'all_files',
   record_attachments: 'record_attachments',
+  deletion_log: 'deletion_log',
 } as const;
 
 export interface DataUploadInput {
   type: DataUploadInputType;
   /** Raw file content (CSV or pipe-delimited) */
   content: string;
+  /** Optional label for the upload — used for deletion_log to track which logs have been ingested */
+  source?: string;
+}
+
+export interface CompletionPerType {
+  recordType: string;
+  totalOrigs: number;
+  deletedCount: number;
+  remainingCount: number;
+  coveragePercent: number;
+  errorCount: number;
+  protectedCount: number;
+}
+
+export interface CompletionOverall {
+  totalOrigs: number;
+  totalDeleted: number;
+  totalRemaining: number;
+  totalErrors: number;
+  totalProtected: number;
+  coveragePercent: number;
+}
+
+export interface CompletionResponse {
+  perType: CompletionPerType[];
+  overall: CompletionOverall;
+  deletionLogEntryCount: number;
+  sources: string[];
+  statusCounts: Record<string, number>;
 }
 
 export interface DataUploadResult {

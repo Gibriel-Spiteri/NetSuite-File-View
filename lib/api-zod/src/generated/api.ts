@@ -20,8 +20,9 @@ export const HealthCheckResponse = zod.object({
  * @summary Upload CSV/pipe-delimited data files
  */
 export const UploadDataBody = zod.object({
-  "type": zod.enum(['all_files', 'record_attachments']),
-  "content": zod.string().describe('Raw file content (CSV or pipe-delimited)')
+  "type": zod.enum(['all_files', 'record_attachments', 'deletion_log']),
+  "content": zod.string().describe('Raw file content (CSV or pipe-delimited)'),
+  "source": zod.string().optional().describe('Optional label for the upload — used for deletion_log to track which logs have been ingested')
 })
 
 export const UploadDataResponse = zod.object({
