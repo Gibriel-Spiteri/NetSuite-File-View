@@ -63,7 +63,15 @@ export function Records() {
             onValueChange={v => setParams(p => ({ ...p, recordType: v === "all" ? undefined : v, offset: 0 }))}
           >
             <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="All Types" />
+              {params.recordType
+                ? (() => {
+                    const t = recordTypes?.find(r => r.recordType === params.recordType);
+                    return t
+                      ? <span className="truncate">{t.recordType} · {t.fileCount.toLocaleString()} files · {formatBytes(t.totalSizeBytes)}</span>
+                      : <span>{params.recordType}</span>;
+                  })()
+                : <span className="text-muted-foreground">All Types</span>
+              }
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
