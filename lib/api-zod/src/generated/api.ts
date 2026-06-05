@@ -86,6 +86,7 @@ export const ListRecordsResponse = zod.object({
  * @summary Get all files attached to a specific record
  */
 export const GetRecordFilesParams = zod.object({
+  "recordType": zod.coerce.string(),
   "recordId": zod.coerce.string()
 })
 

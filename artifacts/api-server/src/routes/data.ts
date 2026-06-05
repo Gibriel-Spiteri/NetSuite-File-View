@@ -70,14 +70,14 @@ router.get("/data/records", async (req, res): Promise<void> => {
   res.json(result);
 });
 
-router.get("/data/records/:recordId/files", async (req, res): Promise<void> => {
+router.get("/data/records/:recordType/:recordId/files", async (req, res): Promise<void> => {
   const params = GetRecordFilesParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
 
-  const files = getRecordFiles(params.data.recordId);
+  const files = getRecordFiles(params.data.recordType, params.data.recordId);
   if (files === null) {
     res.status(404).json({ error: "Record not found" });
     return;

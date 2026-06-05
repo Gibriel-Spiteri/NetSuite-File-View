@@ -437,20 +437,20 @@ export function useListRecords<TData = Awaited<ReturnType<typeof listRecords>>, 
 
 
 
-export const getGetRecordFilesUrl = (recordId: string,) => {
+export const getGetRecordFilesUrl = (recordType: string, recordId: string,) => {
 
 
 
 
-  return `/api/data/records/${recordId}/files`
+  return `/api/data/records/${recordType}/${recordId}/files`
 }
 
 /**
  * @summary Get all files attached to a specific record
  */
-export const getRecordFiles = async (recordId: string, options?: RequestInit): Promise<AttachedFile[]> => {
+export const getRecordFiles = async (recordType: string, recordId: string, options?: RequestInit): Promise<AttachedFile[]> => {
 
-  return customFetch<AttachedFile[]>(getGetRecordFilesUrl(recordId),
+  return customFetch<AttachedFile[]>(getGetRecordFilesUrl(recordType, recordId),
   {
     ...options,
     method: 'GET'
@@ -463,29 +463,29 @@ export const getRecordFiles = async (recordId: string, options?: RequestInit): P
 
 
 
-export const getGetRecordFilesQueryKey = (recordId: string,) => {
+export const getGetRecordFilesQueryKey = (recordType: string, recordId: string,) => {
     return [
-    `/api/data/records/${recordId}/files`
+    `/api/data/records/${recordType}/${recordId}/files`
     ] as const;
     }
 
 
-export const getGetRecordFilesQueryOptions = <TData = Awaited<ReturnType<typeof getRecordFiles>>, TError = ErrorType<void>>(recordId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecordFiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetRecordFilesQueryOptions = <TData = Awaited<ReturnType<typeof getRecordFiles>>, TError = ErrorType<void>>(recordType: string, recordId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecordFiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetRecordFilesQueryKey(recordId);
+  const queryKey =  queryOptions?.queryKey ?? getGetRecordFilesQueryKey(recordType, recordId);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRecordFiles>>> = ({ signal }) => getRecordFiles(recordId, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRecordFiles>>> = ({ signal }) => getRecordFiles(recordType, recordId, { signal, ...requestOptions });
 
 
 
 
 
-   return  { queryKey, queryFn, enabled: !!(recordId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRecordFiles>>, TError, TData> & { queryKey: QueryKey }
+   return  { queryKey, queryFn, enabled: !!(recordType && recordId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRecordFiles>>, TError, TData> & { queryKey: QueryKey }
 }
 
 export type GetRecordFilesQueryResult = NonNullable<Awaited<ReturnType<typeof getRecordFiles>>>
@@ -497,11 +497,11 @@ export type GetRecordFilesQueryError = ErrorType<void>
  */
 
 export function useGetRecordFiles<TData = Awaited<ReturnType<typeof getRecordFiles>>, TError = ErrorType<void>>(
- recordId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecordFiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ recordType: string, recordId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecordFiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetRecordFilesQueryOptions(recordId,options)
+  const queryOptions = getGetRecordFilesQueryOptions(recordType, recordId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -20,6 +20,38 @@ export interface RecordAttachment {
   sizeBytes: number;
   fileType: string;
   hasStub: boolean;
+  isStub: boolean;
+}
+
+// RFC 4180-aware CSV line splitter. Required because file names in the
+// dataset contain commas inside quoted fields (e.g. "20220316_For over
+// 55 years, Jet Sanitation Service Corp. has be.pdf"). A naive
+// line.split(",") shifts every column after the first internal comma —
+// names truncate, sizes become 0, hasStub/isStub flip wrong.
+function parseCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let buf = "";
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line.charAt(i);
+    if (inQ) {
+      if (c === '"') {
+        if (line.charAt(i + 1) === '"') { buf += '"'; i++; }
+        else { inQ = false; }
+      } else { buf += c; }
+    } else {
+      if (c === ",") { out.push(buf); buf = ""; }
+      else if (c === '"' && buf === "") { inQ = true; }
+      else { buf += c; }
+    }
+  }
+  out.push(buf);
+  return out;
+}
+
+function parseYesNo(s: string | undefined): boolean {
+  const v = s?.toLowerCase();
+  return v === "true" || v === "1" || v === "yes";
 }
 
 interface DataStore {
@@ -59,14 +91,26 @@ export function parseRecordAttachments(content: string): number {
   const records: RecordAttachment[] = [];
 
   for (const line of lines) {
-    const parts = line.split(",");
+    const parts = parseCsvLine(line);
     if (parts.length < 9) continue;
-    const [recordType, recordId, recordName, recordStatus, fileId, fileName, sizeBytesStr, fileType, hasStubStr] = parts.map((p) => p.trim());
+    const recordType = parts[0];
     if (!recordType || recordType === "record_type") continue;
-    const sizeBytes = parseInt(sizeBytesStr, 10) || 0;
-    const norm = hasStubStr?.toLowerCase();
-    const hasStub = norm === "true" || norm === "1" || norm === "yes";
-    records.push({ recordType, recordId, recordName, recordStatus: recordStatus ?? "", fileId, fileName, sizeBytes, fileType, hasStub });
+    records.push({
+      recordType,
+      recordId: parts[1],
+      recordName: parts[2],
+      recordStatus: parts[3] ?? "",
+      fileId: parts[4],
+      fileName: parts[5],
+      sizeBytes: parseInt(parts[6], 10) || 0,
+      fileType: parts[7],
+      hasStub: parseYesNo(parts[8]),
+      // Column 10 (is_stub) was added 2026-06-05. Falls back to the old
+      // HTMLDOC heuristic if the column is missing so older CSV uploads
+      // don't break — but those uploads will mis-classify any
+      // non-migration .html files.
+      isStub: parts.length >= 10 ? parseYesNo(parts[9]) : parts[7] === "HTMLDOC",
+    });
   }
 
   store.recordAttachments = records;
@@ -75,9 +119,11 @@ export function parseRecordAttachments(content: string): number {
   return records.length;
 }
 
-/** Stub files (.html HTMLDOC) are the stubs themselves — exclude from coverage calculations */
-function isStubFile(att: { fileType: string }): boolean {
-  return att.fileType === "HTMLDOC";
+/** Authoritative stub flag — keyed on the `is_stub` CSV column, not a
+ *  fileType heuristic (which misfires on any plain .html file that isn't
+ *  one of our migration stubs). */
+function isStubFile(att: { isStub: boolean }): boolean {
+  return att.isStub;
 }
 
 export function getDataStatus() {
@@ -173,7 +219,9 @@ export function getRecords(opts: {
   for (const att of store.recordAttachments) {
     if (recordType && att.recordType !== recordType) continue;
 
-    const key = att.recordId;
+    // Key by (recordType, recordId) — recordId alone is not globally
+    // unique (a vendor and a customrecord_delivery can share an id).
+    const key = att.recordType + "|" + att.recordId;
     if (!recordMap.has(key)) {
       recordMap.set(key, {
         recordId: att.recordId,
@@ -228,8 +276,13 @@ export function getRecords(opts: {
   return { records: paginated, total };
 }
 
-export function getRecordFiles(recordId: string) {
-  const attachments = store.recordAttachments.filter((a) => a.recordId === recordId);
+// `recordId` is unique within a `recordType`, NOT globally (vendor 279727
+// and customrecord_delivery 279727 are different records). Filtering by
+// recordId alone merged files from unrelated records of different types.
+export function getRecordFiles(recordType: string, recordId: string) {
+  const attachments = store.recordAttachments.filter(
+    (a) => a.recordType === recordType && a.recordId === recordId
+  );
   if (attachments.length === 0) return null;
 
   return attachments.map((att) => {
@@ -307,8 +360,10 @@ export function getDashboardSummary() {
   const totalFiles = store.allFiles.size;
   const totalAttachments = store.recordAttachments.length;
 
-  const recordIds = new Set(store.recordAttachments.map((a) => a.recordId));
-  const totalRecords = recordIds.size;
+  // Count by (recordType, recordId) — same id under different types is
+  // a different record.
+  const recordKeys = new Set(store.recordAttachments.map((a) => a.recordType + "|" + a.recordId));
+  const totalRecords = recordKeys.size;
 
   const recordTypes = new Set(store.recordAttachments.map((a) => a.recordType));
   const totalRecordTypes = recordTypes.size;
@@ -414,14 +469,22 @@ function streamParseRecordAttachmentsFromPath(filePath: string): Promise<RecordA
     const records: RecordAttachment[] = [];
     const rl = readline.createInterface({ input: fs.createReadStream(filePath), crlfDelay: Infinity });
     rl.on("line", (line) => {
-      const parts = line.split(",");
+      const parts = parseCsvLine(line);
       if (parts.length < 9) return;
-      const [recordType, recordId, recordName, recordStatus, fileId, fileName, sizeBytesStr, fileType, hasStubStr] = parts.map((p) => p.trim());
+      const recordType = parts[0];
       if (!recordType || recordType === "record_type") return;
-      const sizeBytes = parseInt(sizeBytesStr, 10) || 0;
-      const norm = hasStubStr?.toLowerCase();
-      const hasStub = norm === "true" || norm === "1" || norm === "yes";
-      records.push({ recordType, recordId, recordName, recordStatus: recordStatus ?? "", fileId, fileName, sizeBytes, fileType, hasStub });
+      records.push({
+        recordType,
+        recordId: parts[1],
+        recordName: parts[2],
+        recordStatus: parts[3] ?? "",
+        fileId: parts[4],
+        fileName: parts[5],
+        sizeBytes: parseInt(parts[6], 10) || 0,
+        fileType: parts[7],
+        hasStub: parseYesNo(parts[8]),
+        isStub: parts.length >= 10 ? parseYesNo(parts[9]) : parts[7] === "HTMLDOC",
+      });
     });
     rl.on("close", () => resolve(records));
     rl.on("error", reject);
