@@ -319,7 +319,7 @@ components:
 
     RecordTypeSummary:
       type: object
-      required: [recordType, recordCount, fileCount, stubCount, missingStubCount]
+      required: [recordType, recordCount, fileCount, stubCount, missingStubCount, totalSizeBytes]
       properties:
         recordType:
           type: string
@@ -330,6 +330,8 @@ components:
         stubCount:
           type: integer
         missingStubCount:
+          type: integer
+        totalSizeBytes:
           type: integer
 
     AttachedFile:
@@ -421,7 +423,7 @@ components:
 
     DashboardSummary:
       type: object
-      required: [totalFiles, totalRecords, totalRecordTypes, totalAttachments, filesWithStub, filesMissingStub, stubCoveragePercent]
+      required: [totalFiles, totalRecords, totalRecordTypes, totalAttachments, filesWithStub, filesMissingStub, stubCoveragePercent, totalSizeBytes]
       properties:
         totalFiles:
           type: integer
@@ -437,6 +439,8 @@ components:
           type: integer
         stubCoveragePercent:
           type: number
+        totalSizeBytes:
+          type: integer
 
     VerificationItem:
       type: object
@@ -472,7 +476,7 @@ components:
 
     StubCoverageByType:
       type: object
-      required: [recordType, fileCount, stubCount, missingStubCount, coveragePercent]
+      required: [recordType, fileCount, stubCount, missingStubCount, coveragePercent, totalSizeBytes]
       properties:
         recordType:
           type: string
@@ -484,6 +488,8 @@ components:
           type: integer
         coveragePercent:
           type: number
+        totalSizeBytes:
+          type: integer
 
     NetsuiteStatus:
       type: object

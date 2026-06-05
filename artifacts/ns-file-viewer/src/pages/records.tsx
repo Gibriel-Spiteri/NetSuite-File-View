@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Search, ExternalLink } from "lucide-react";
 import { buildNetsuiteUrl } from "@/lib/netsuite";
+import { formatBytes } from "@/lib/format";
 
 function NetsuiteLink({ recordType, recordId, accountId }: { recordType: string; recordId: string; accountId: string | undefined }) {
   if (!accountId) return null;
@@ -217,7 +218,7 @@ function RecordDetailsSheet({
           <div className="flex items-start justify-between gap-3 pr-6">
             <div className="min-w-0">
               <SheetTitle>Record Attachments</SheetTitle>
-              <SheetDescription className="mt-1">
+              <SheetDescription className="mt-1 space-y-0.5">
                 {recordMeta && (
                   <span className="mr-2">
                     <Badge variant="outline" className="text-xs mr-1">{recordMeta.recordType}</Badge>
@@ -226,6 +227,14 @@ function RecordDetailsSheet({
                 )}
                 <br />
                 ID: <span className="font-mono">{recordId}</span>
+                {files && files.length > 0 && (
+                  <>
+                    <span className="mx-1">·</span>
+                    <span>{files.length} files</span>
+                    <span className="mx-1">·</span>
+                    <span>{formatBytes(files.reduce((s, f) => s + f.sizeBytes, 0))}</span>
+                  </>
+                )}
               </SheetDescription>
             </div>
             {accountId && recordId && recordMeta && (
@@ -259,7 +268,7 @@ function RecordDetailsSheet({
                       <div className="text-xs text-muted-foreground mt-1 flex gap-2 flex-wrap">
                         <span>ID: <span className="font-mono">{file.fileId}</span></span>
                         <span>•</span>
-                        <span>Size: {(file.sizeBytes / 1024).toFixed(1)} KB</span>
+                        <span>Size: {formatBytes(file.sizeBytes)}</span>
                       </div>
                     </div>
                     {file.isStubFile ? (

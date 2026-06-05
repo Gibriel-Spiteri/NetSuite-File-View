@@ -12,4 +12,5 @@ export interface StubCoverageByType {
   stubCount: number;
   missingStubCount: number;
   coveragePercent: number;
+  totalSizeBytes: number;
 }

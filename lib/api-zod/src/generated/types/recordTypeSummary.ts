@@ -12,4 +12,5 @@ export interface RecordTypeSummary {
   fileCount: number;
   stubCount: number;
   missingStubCount: number;
+  totalSizeBytes: number;
 }

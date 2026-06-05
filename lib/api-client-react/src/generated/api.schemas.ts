@@ -42,6 +42,7 @@ export interface RecordTypeSummary {
   fileCount: number;
   stubCount: number;
   missingStubCount: number;
+  totalSizeBytes: number;
 }
 
 export interface AttachedFile {
@@ -101,6 +102,7 @@ export interface DashboardSummary {
   filesWithStub: number;
   filesMissingStub: number;
   stubCoveragePercent: number;
+  totalSizeBytes: number;
 }
 
 export interface VerificationItem {
@@ -125,6 +127,7 @@ export interface StubCoverageByType {
   stubCount: number;
   missingStubCount: number;
   coveragePercent: number;
+  totalSizeBytes: number;
 }
 
 export interface NetsuiteStatus {

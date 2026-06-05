@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ExternalLink, ChevronDown, ChevronRight, CheckCircle2, Circle, FileX } from "lucide-react";
 import { buildNetsuiteUrl } from "@/lib/netsuite";
+import { formatBytes } from "@/lib/format";
 
 type RecordGroup = {
   recordId: string;
@@ -19,6 +20,7 @@ type TypeGroup = {
   type: string;
   records: RecordGroup[];
   totalFiles: number;
+  totalSizeBytes: number;
 };
 
 function useReviewedState() {
@@ -71,7 +73,15 @@ export function Verification() {
       records.get(item.recordId)!.files.push(item);
     }
     return Array.from(map.entries())
-      .map(([type, records]) => ({ type, records: Array.from(records.values()), totalFiles: Array.from(records.values()).reduce((n, r) => n + r.files.length, 0) }))
+      .map(([type, records]) => {
+        const recs = Array.from(records.values());
+        return {
+          type,
+          records: recs,
+          totalFiles: recs.reduce((n, r) => n + r.files.length, 0),
+          totalSizeBytes: recs.reduce((n, r) => n + r.files.reduce((s, f) => s + f.sizeBytes, 0), 0),
+        };
+      })
       .sort((a, b) => b.totalFiles - a.totalFiles);
   }, [data]);
 
@@ -127,7 +137,8 @@ export function Verification() {
                 <div className="flex items-center gap-4 flex-1 min-w-0">
                   <div className="text-sm text-muted-foreground whitespace-nowrap">
                     <span className="font-medium text-foreground">{group.records.length}</span> records ·{" "}
-                    <span className="font-medium text-foreground">{group.totalFiles}</span> files
+                    <span className="font-medium text-foreground">{group.totalFiles}</span> files ·{" "}
+                    <span className="font-medium text-foreground">{formatBytes(group.totalSizeBytes)}</span>
                   </div>
                   <div className="flex-1 flex items-center gap-2 min-w-0">
                     <div className="flex-1 max-w-[200px] h-1.5 bg-muted rounded-full overflow-hidden">

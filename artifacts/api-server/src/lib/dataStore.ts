@@ -90,16 +90,17 @@ export function getDataStatus() {
 }
 
 export function getRecordTypes() {
-  const typeMap = new Map<string, { recordCount: Set<string>; fileCount: number; stubCount: number; missingStubCount: number }>();
+  const typeMap = new Map<string, { recordCount: Set<string>; fileCount: number; stubCount: number; missingStubCount: number; fileSizes: Map<string, number> }>();
 
   for (const att of store.recordAttachments) {
     if (!typeMap.has(att.recordType)) {
-      typeMap.set(att.recordType, { recordCount: new Set(), fileCount: 0, stubCount: 0, missingStubCount: 0 });
+      typeMap.set(att.recordType, { recordCount: new Set(), fileCount: 0, stubCount: 0, missingStubCount: 0, fileSizes: new Map() });
     }
     const entry = typeMap.get(att.recordType)!;
     entry.recordCount.add(att.recordId);
     if (isStubFile(att)) continue;
     entry.fileCount++;
+    if (!entry.fileSizes.has(att.fileId)) entry.fileSizes.set(att.fileId, att.sizeBytes);
     if (att.hasStub) {
       entry.stubCount++;
     } else {
@@ -114,6 +115,7 @@ export function getRecordTypes() {
       fileCount: data.fileCount,
       stubCount: data.stubCount,
       missingStubCount: data.missingStubCount,
+      totalSizeBytes: Array.from(data.fileSizes.values()).reduce((s, n) => s + n, 0),
     }))
     .sort((a, b) => a.recordType.localeCompare(b.recordType));
 }
@@ -332,6 +334,8 @@ export function getDashboardSummary() {
   const stubCoveragePercent =
     fileStubMap.size > 0 ? Math.round((filesWithStub / fileStubMap.size) * 10000) / 100 : 0;
 
+  const totalSizeBytes = store.recordAttachments.reduce((sum, a) => sum + (isStubFile(a) ? 0 : a.sizeBytes), 0);
+
   return {
     totalFiles,
     totalRecords,
@@ -340,20 +344,22 @@ export function getDashboardSummary() {
     filesWithStub,
     filesMissingStub,
     stubCoveragePercent,
+    totalSizeBytes,
   };
 }
 
 export function getStubCoverageByType() {
-  const typeMap = new Map<string, { fileSet: Map<string, boolean> }>();
+  const typeMap = new Map<string, { fileSet: Map<string, boolean>; sizeMap: Map<string, number> }>();
 
   for (const att of store.recordAttachments) {
     if (isStubFile(att)) continue;
     if (!typeMap.has(att.recordType)) {
-      typeMap.set(att.recordType, { fileSet: new Map() });
+      typeMap.set(att.recordType, { fileSet: new Map(), sizeMap: new Map() });
     }
     const entry = typeMap.get(att.recordType)!;
     if (!entry.fileSet.has(att.fileId)) {
       entry.fileSet.set(att.fileId, att.hasStub);
+      entry.sizeMap.set(att.fileId, att.sizeBytes);
     } else if (att.hasStub) {
       entry.fileSet.set(att.fileId, true);
     }
@@ -365,7 +371,8 @@ export function getStubCoverageByType() {
       const stubCount = Array.from(data.fileSet.values()).filter(Boolean).length;
       const missingStubCount = fileCount - stubCount;
       const coveragePercent = fileCount > 0 ? Math.round((stubCount / fileCount) * 10000) / 100 : 0;
-      return { recordType, fileCount, stubCount, missingStubCount, coveragePercent };
+      const totalSizeBytes = Array.from(data.sizeMap.values()).reduce((s, n) => s + n, 0);
+      return { recordType, fileCount, stubCount, missingStubCount, coveragePercent, totalSizeBytes };
     })
     .sort((a, b) => b.fileCount - a.fileCount);
 }

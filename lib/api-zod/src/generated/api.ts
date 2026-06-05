@@ -50,7 +50,8 @@ export const ListRecordTypesResponseItem = zod.object({
   "recordCount": zod.number(),
   "fileCount": zod.number(),
   "stubCount": zod.number(),
-  "missingStubCount": zod.number()
+  "missingStubCount": zod.number(),
+  "totalSizeBytes": zod.number()
 })
 export const ListRecordTypesResponse = zod.array(ListRecordTypesResponseItem)
 
@@ -163,7 +164,8 @@ export const GetSummaryResponse = zod.object({
   "totalAttachments": zod.number(),
   "filesWithStub": zod.number(),
   "filesMissingStub": zod.number(),
-  "stubCoveragePercent": zod.number()
+  "stubCoveragePercent": zod.number(),
+  "totalSizeBytes": zod.number()
 })
 
 
@@ -175,7 +177,8 @@ export const GetStubCoverageResponseItem = zod.object({
   "fileCount": zod.number(),
   "stubCount": zod.number(),
   "missingStubCount": zod.number(),
-  "coveragePercent": zod.number()
+  "coveragePercent": zod.number(),
+  "totalSizeBytes": zod.number()
 })
 export const GetStubCoverageResponse = zod.array(GetStubCoverageResponseItem)
 

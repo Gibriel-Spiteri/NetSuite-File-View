@@ -14,4 +14,5 @@ export interface DashboardSummary {
   filesWithStub: number;
   filesMissingStub: number;
   stubCoveragePercent: number;
+  totalSizeBytes: number;
 }
