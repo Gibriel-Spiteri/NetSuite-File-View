@@ -9,6 +9,7 @@ import {
   getAllFiles,
   getDashboardSummary,
   getStubCoverageByType,
+  getVerificationItems,
 } from "../lib/dataStore";
 import {
   UploadDataBody,
@@ -102,6 +103,13 @@ router.get("/data/files", async (req, res): Promise<void> => {
   });
 
   res.json(result);
+});
+
+router.get("/data/verification", async (req, res): Promise<void> => {
+  const recordType = typeof req.query.recordType === "string" ? req.query.recordType : undefined;
+  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 500;
+  const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+  res.json(getVerificationItems({ recordType, limit, offset }));
 });
 
 router.get("/data/summary", async (_req, res): Promise<void> => {

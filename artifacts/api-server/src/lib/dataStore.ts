@@ -118,6 +118,44 @@ export function getRecordTypes() {
     .sort((a, b) => a.recordType.localeCompare(b.recordType));
 }
 
+export function getVerificationItems(opts: {
+  recordType?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const { recordType, limit = 200, offset = 0 } = opts;
+
+  let rows = store.recordAttachments.filter(
+    (att) => !isStubFile(att) && !att.hasStub
+  );
+
+  if (recordType) {
+    rows = rows.filter((r) => r.recordType === recordType);
+  }
+
+  rows.sort((a, b) => {
+    const typeCmp = a.recordType.localeCompare(b.recordType);
+    if (typeCmp !== 0) return typeCmp;
+    const nameCmp = (a.recordName || a.recordId).localeCompare(b.recordName || b.recordId);
+    if (nameCmp !== 0) return nameCmp;
+    return a.fileName.localeCompare(b.fileName);
+  });
+
+  const total = rows.length;
+  const items = rows.slice(offset, offset + limit).map((att) => ({
+    recordType: att.recordType,
+    recordId: att.recordId,
+    recordName: att.recordName,
+    recordStatus: att.recordStatus,
+    fileId: att.fileId,
+    fileName: att.fileName,
+    sizeBytes: att.sizeBytes,
+    fileType: att.fileType,
+  }));
+
+  return { items, total };
+}
+
 export function getRecords(opts: {
   recordType?: string;
   search?: string;

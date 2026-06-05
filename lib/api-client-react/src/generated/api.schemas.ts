@@ -103,6 +103,22 @@ export interface DashboardSummary {
   stubCoveragePercent: number;
 }
 
+export interface VerificationItem {
+  recordType: string;
+  recordId: string;
+  recordName: string;
+  recordStatus: string;
+  fileId: string;
+  fileName: string;
+  sizeBytes: number;
+  fileType: string;
+}
+
+export interface VerificationResponse {
+  items: VerificationItem[];
+  total: number;
+}
+
 export interface StubCoverageByType {
   recordType: string;
   fileCount: number;
@@ -173,4 +189,10 @@ export const ListAllFilesStubStatus = {
   has_stub: 'has_stub',
   missing_stub: 'missing_stub',
 } as const;
+
+export type GetVerificationItemsParams = {
+recordType?: string;
+limit?: number;
+offset?: number;
+};
 

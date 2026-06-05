@@ -26,6 +26,7 @@ import type {
   DataUploadInput,
   DataUploadResult,
   FileListResponse,
+  GetVerificationItemsParams,
   HealthStatus,
   ListAllFilesParams,
   ListRecordsParams,
@@ -34,7 +35,8 @@ import type {
   RecordTypeSummary,
   RefreshStubInput,
   RefreshStubResult,
-  StubCoverageByType
+  StubCoverageByType,
+  VerificationResponse
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -584,6 +586,90 @@ export function useListAllFiles<TData = Awaited<ReturnType<typeof listAllFiles>>
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListAllFilesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetVerificationItemsUrl = (params?: GetVerificationItemsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/data/verification?${stringifiedParams}` : `/api/data/verification`
+}
+
+/**
+ * @summary Files missing stubs with their record context, sorted by record type
+ */
+export const getVerificationItems = async (params?: GetVerificationItemsParams, options?: RequestInit): Promise<VerificationResponse> => {
+
+  return customFetch<VerificationResponse>(getGetVerificationItemsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVerificationItemsQueryKey = (params?: GetVerificationItemsParams,) => {
+    return [
+    `/api/data/verification`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetVerificationItemsQueryOptions = <TData = Awaited<ReturnType<typeof getVerificationItems>>, TError = ErrorType<unknown>>(params?: GetVerificationItemsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVerificationItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVerificationItemsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVerificationItems>>> = ({ signal }) => getVerificationItems(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVerificationItems>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVerificationItemsQueryResult = NonNullable<Awaited<ReturnType<typeof getVerificationItems>>>
+export type GetVerificationItemsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Files missing stubs with their record context, sorted by record type
+ */
+
+export function useGetVerificationItems<TData = Awaited<ReturnType<typeof getVerificationItems>>, TError = ErrorType<unknown>>(
+ params?: GetVerificationItemsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVerificationItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVerificationItemsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

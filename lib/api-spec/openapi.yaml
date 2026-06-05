@@ -184,6 +184,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/FileListResponse"
 
+  /data/verification:
+    get:
+      operationId: getVerificationItems
+      tags: [data]
+      summary: Files missing stubs with their record context, sorted by record type
+      parameters:
+        - name: recordType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Missing-stub file-record pairs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationResponse"
+
   /data/summary:
     get:
       operationId: getSummary
@@ -408,6 +437,38 @@ components:
           type: integer
         stubCoveragePercent:
           type: number
+
+    VerificationItem:
+      type: object
+      required: [recordType, recordId, recordName, recordStatus, fileId, fileName, sizeBytes, fileType]
+      properties:
+        recordType:
+          type: string
+        recordId:
+          type: string
+        recordName:
+          type: string
+        recordStatus:
+          type: string
+        fileId:
+          type: string
+        fileName:
+          type: string
+        sizeBytes:
+          type: integer
+        fileType:
+          type: string
+
+    VerificationResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VerificationItem"
+        total:
+          type: integer
 
     StubCoverageByType:
       type: object

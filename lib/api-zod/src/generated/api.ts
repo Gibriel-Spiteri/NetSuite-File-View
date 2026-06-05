@@ -130,6 +130,30 @@ export const ListAllFilesResponse = zod.object({
 
 
 /**
+ * @summary Files missing stubs with their record context, sorted by record type
+ */
+export const GetVerificationItemsQueryParams = zod.object({
+  "recordType": zod.coerce.string().optional(),
+  "limit": zod.coerce.number().optional(),
+  "offset": zod.coerce.number().optional()
+})
+
+export const GetVerificationItemsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "recordType": zod.string(),
+  "recordId": zod.string(),
+  "recordName": zod.string(),
+  "recordStatus": zod.string(),
+  "fileId": zod.string(),
+  "fileName": zod.string(),
+  "sizeBytes": zod.number(),
+  "fileType": zod.string()
+})),
+  "total": zod.number()
+})
+
+
+/**
  * @summary Get dashboard summary stats
  */
 export const GetSummaryResponse = zod.object({
