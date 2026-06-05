@@ -12,11 +12,8 @@ import {
   getDashboardSummary,
   getStubCoverageByType,
   getVerificationItems,
-<<<<<<< HEAD
   reloadDataFromDisk,
-=======
   getCompletion,
->>>>>>> d575c32a57cc02f308ea23a4d37e3dee18d3535c
 } from "../lib/dataStore";
 import {
   UploadDataBody,
@@ -40,18 +37,12 @@ router.post("/data/upload", async (req, res): Promise<void> => {
   if (type === "all_files") {
     rowCount = await parseAllFiles(content);
   } else if (type === "record_attachments") {
-<<<<<<< HEAD
     rowCount = await parseRecordAttachments(content);
-=======
-    rowCount = parseRecordAttachments(content);
   } else if (type === "deletion_log") {
-    // `source` lets the UI label each log so re-uploads of the same
-    // file don't pile up; missing source falls back to a timestamp.
     const source = typeof (parsed.data as { source?: string }).source === "string"
       ? (parsed.data as { source?: string }).source!
       : `upload_${new Date().toISOString()}`;
     rowCount = parseDeletionLog(content, source);
->>>>>>> d575c32a57cc02f308ea23a4d37e3dee18d3535c
   } else {
     res.status(400).json({ error: "Invalid type. Must be 'all_files', 'record_attachments', or 'deletion_log'" });
     return;
@@ -144,7 +135,7 @@ router.get("/data/stub-coverage", async (_req, res): Promise<void> => {
 });
 
 router.get("/data/completion", async (_req, res): Promise<void> => {
-  res.json(getCompletion());
+  res.json(await getCompletion());
 });
 
 router.delete("/data/deletion-log", async (_req, res): Promise<void> => {

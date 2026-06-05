@@ -56,13 +56,11 @@ function parseYesNo(s: string | undefined): boolean {
   return v === "true" || v === "1" || v === "yes";
 }
 
-<<<<<<< HEAD
 const BATCH_SIZE = 500;
 
 // ── Simple in-memory cache ──────────────────────────────────────────────────
-// These aggregation queries scan millions of rows; cache results until data changes.
 type CacheEntry<T> = { value: T; ts: number };
-const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const CACHE_TTL_MS = 10 * 60 * 1000;
 const cache: {
   summary?: CacheEntry<Awaited<ReturnType<typeof _getDashboardSummary>>>;
   coverage?: CacheEntry<Awaited<ReturnType<typeof _getStubCoverageByType>>>;
@@ -74,6 +72,31 @@ export function invalidateSummaryCache() {
   delete cache.coverage;
   delete cache.recordTypes;
 }
+
+// ── Deletion log (in-memory, uploaded by user) ───────────────────────────────
+// Not persisted in the DB — cleared on server restart (intentional).
+export type DeletionStatus =
+  | "deleted"
+  | "already_deleted"
+  | "protected_stub_deleted"
+  | "protected_no_stub"
+  | "error:protected_stub_refused"
+  | "error:protected_stub_error"
+  | "error:delete"
+  | "error:bad_row"
+  | string;
+
+const deletionLog = new Map<string, DeletionStatus>();
+const deletionLogSources: string[] = [];
+
+// Statuses that count as "file is gone from cabinet" for Phase 3 progress.
+const DELETED_STATUSES = new Set<string>(["deleted", "already_deleted"]);
+const PROTECTED_STATUSES = new Set<string>([
+  "protected_stub_deleted",
+  "protected_no_stub",
+  "error:protected_stub_refused",
+  "error:protected_stub_error",
+]);
 
 async function upsertAllFiles(records: AllFileRecord[]): Promise<void> {
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
@@ -135,47 +158,6 @@ async function upsertRecordAttachments(records: RecordAttachment[]): Promise<voi
 }
 
 function parseAllFilesContent(content: string): AllFileRecord[] {
-=======
-// Per-fileId Phase 3 delete-log status. Multi-log uploads merge by
-// fileId (last write wins), so re-runs (e.g. already_deleted following
-// deleted) settle cleanly without manual reset.
-export type DeletionStatus =
-  | "deleted"
-  | "already_deleted"
-  | "protected_stub_deleted"
-  | "protected_no_stub"
-  | "error:protected_stub_refused"
-  | "error:protected_stub_error"
-  | "error:delete"
-  | "error:bad_row"
-  | string; // tolerate forward-compat statuses
-
-interface DataStore {
-  allFiles: Map<string, AllFileRecord>;
-  recordAttachments: RecordAttachment[];
-  deletionLog: Map<string, DeletionStatus>;
-  deletionLogSources: string[]; // filenames or labels of uploaded logs
-  allFilesLoaded: boolean;
-  recordAttachmentsLoaded: boolean;
-}
-
-const store: DataStore = {
-  allFiles: new Map(),
-  recordAttachments: [],
-  deletionLog: new Map(),
-  deletionLogSources: [],
-  allFilesLoaded: false,
-  recordAttachmentsLoaded: false,
-};
-
-// Statuses that mean "the orig file is gone from the cabinet" — the only
-// states that count as Phase 3 progress. Protected-ext rows keep the
-// orig in place (only the stub got cleaned up), so they do NOT count
-// here; error rows obviously don't either.
-const DELETED_STATUSES = new Set<string>(["deleted", "already_deleted"]);
-
-export function parseAllFiles(content: string): number {
->>>>>>> d575c32a57cc02f308ea23a4d37e3dee18d3535c
   const lines = content.split(/\r?\n/).filter((l) => l.trim());
   const records: AllFileRecord[] = [];
   for (const line of lines) {
@@ -261,21 +243,6 @@ export async function parseRecordAttachments(content: string): Promise<number> {
   return records.length;
 }
 
-<<<<<<< HEAD
-export async function getDataStatus() {
-  const [filesRes, attachmentsRes] = await Promise.all([
-    pool.query<{ count: string }>("SELECT COUNT(*) AS count FROM all_files"),
-    pool.query<{ count: string }>("SELECT COUNT(*) AS count FROM record_attachments"),
-  ]);
-  const allFilesCount = parseInt(filesRes.rows[0]?.count ?? "0", 10);
-  const recordAttachmentsCount = parseInt(attachmentsRes.rows[0]?.count ?? "0", 10);
-=======
-// Parses a Phase 3 delete log (`fileId|status\n`) and merges its rows
-// into store.deletionLog. Multiple uploads accumulate — same fileId in
-// a later log overrides the previous status, which is what we want for
-// "ran the M/R a second time and the row went from `error:delete` to
-// `deleted`" type situations. `source` is recorded so the UI can show
-// which logs have been ingested.
 export function parseDeletionLog(content: string, source: string): number {
   const lines = content.split(/\r?\n/);
   let added = 0;
@@ -291,24 +258,29 @@ export function parseDeletionLog(content: string, source: string): number {
     const fileId = line.substring(0, i).trim();
     const status = line.substring(i + 1).trim();
     if (!fileId || !/^\d+$/.test(fileId)) continue;
-    store.deletionLog.set(fileId, status);
+    deletionLog.set(fileId, status);
     added++;
   }
-  if (source && !store.deletionLogSources.includes(source)) {
-    store.deletionLogSources.push(source);
+  if (source && !deletionLogSources.includes(source)) {
+    deletionLogSources.push(source);
   }
-  logger.info({ source, added, totalEntries: store.deletionLog.size }, "Deletion log merged");
+  logger.info({ source, added, totalEntries: deletionLog.size }, "Deletion log merged");
   return added;
 }
 
 export function clearDeletionLog(): void {
-  store.deletionLog.clear();
-  store.deletionLogSources = [];
+  deletionLog.clear();
+  deletionLogSources.length = 0;
   logger.info("Deletion log cleared");
 }
 
-export function getDataStatus() {
->>>>>>> d575c32a57cc02f308ea23a4d37e3dee18d3535c
+export async function getDataStatus() {
+  const [filesRes, attachmentsRes] = await Promise.all([
+    pool.query<{ count: string }>("SELECT COUNT(*) AS count FROM all_files"),
+    pool.query<{ count: string }>("SELECT COUNT(*) AS count FROM record_attachments"),
+  ]);
+  const allFilesCount = parseInt(filesRes.rows[0]?.count ?? "0", 10);
+  const recordAttachmentsCount = parseInt(attachmentsRes.rows[0]?.count ?? "0", 10);
   return {
     allFilesLoaded: allFilesCount > 0,
     recordAttachmentsLoaded: recordAttachmentsCount > 0,
@@ -723,7 +695,6 @@ async function _getDashboardSummary() {
   };
 }
 
-<<<<<<< HEAD
 export async function getDashboardSummary() {
   const now = Date.now();
   if (cache.summary && now - cache.summary.ts < CACHE_TTL_MS) return cache.summary.value;
@@ -790,24 +761,29 @@ export async function updateStubStatus(fileId: string, hasStub: boolean): Promis
   );
   invalidateSummaryCache();
   return result.rowCount ?? 0;
-=======
-// Per-recordType Phase 3 completion stats. For each recordType, counts
-// the distinct orig fileIds attached to records of that type, then
-// counts how many of those have a deletion-log row in DELETED_STATUSES.
+}
+
+// Per-recordType Phase 3 completion stats. Queries distinct orig fileIds
+// from the DB (has_stub=true, non-HTMLDOC), then cross-references with
+// the in-memory deletion log uploaded by the user.
 //
 // Note on overlapping coverage: an orig attached to BOTH `task` and
 // `salesorder` shows up in both buckets. When it's deleted, both
-// buckets advance — that's correct (deleting in NS detaches from every
-// holder system-wide). Sum of `totalOrigs` across types therefore
-// exceeds the distinct orig count account-wide.
-export function getCompletion() {
+// buckets advance — correct, since NS detaches system-wide. Sum of
+// `totalOrigs` across types therefore exceeds the distinct orig count.
+export async function getCompletion() {
+  const result = await pool.query<{ record_type: string; file_id: string }>(
+    `SELECT DISTINCT record_type, file_id
+     FROM record_attachments
+     WHERE has_stub = true AND file_type != 'HTMLDOC'`,
+  );
+
   // recordType -> Set of distinct orig fileIds attached to records of that type
   const origsByType = new Map<string, Set<string>>();
-  for (const att of store.recordAttachments) {
-    if (!att.hasStub || att.isStub) continue; // orig rows only
-    let set = origsByType.get(att.recordType);
-    if (!set) { set = new Set(); origsByType.set(att.recordType, set); }
-    set.add(att.fileId);
+  for (const row of result.rows) {
+    let set = origsByType.get(row.record_type);
+    if (!set) { set = new Set(); origsByType.set(row.record_type, set); }
+    set.add(row.file_id);
   }
 
   const perType: Array<{
@@ -820,20 +796,12 @@ export function getCompletion() {
     protectedCount: number;
   }> = [];
 
-  // Statuses bucketed by category for the per-type breakdown.
-  const PROTECTED_STATUSES = new Set([
-    "protected_stub_deleted",
-    "protected_no_stub",
-    "error:protected_stub_refused",
-    "error:protected_stub_error",
-  ]);
-
   for (const [recordType, origs] of origsByType) {
     let deletedCount = 0;
     let errorCount = 0;
     let protectedCount = 0;
     for (const fid of origs) {
-      const status = store.deletionLog.get(fid);
+      const status = deletionLog.get(fid);
       if (!status) continue;
       if (DELETED_STATUSES.has(status)) deletedCount++;
       else if (PROTECTED_STATUSES.has(status)) protectedCount++;
@@ -857,24 +825,20 @@ export function getCompletion() {
 
   perType.sort((a, b) => b.deletedCount - a.deletedCount || a.recordType.localeCompare(b.recordType));
 
-  // Account-wide totals — counted by DISTINCT fileId so each orig is
-  // tallied once even if it's attached to multiple types.
+  // Account-wide totals — counted by DISTINCT fileId so each orig is tallied once.
   const allOrigs = new Set<string>();
   for (const set of origsByType.values()) for (const fid of set) allOrigs.add(fid);
   let totalDeleted = 0, totalErrors = 0, totalProtected = 0;
   for (const fid of allOrigs) {
-    const status = store.deletionLog.get(fid);
+    const status = deletionLog.get(fid);
     if (!status) continue;
     if (DELETED_STATUSES.has(status)) totalDeleted++;
     else if (PROTECTED_STATUSES.has(status)) totalProtected++;
     else if (status.startsWith("error")) totalErrors++;
   }
 
-  // Distribution of every status seen in uploaded logs (whether or not
-  // the row maps back to a known orig). Lets the UI surface unexpected
-  // statuses.
   const statusCounts: Record<string, number> = {};
-  for (const status of store.deletionLog.values()) {
+  for (const status of deletionLog.values()) {
     statusCounts[status] = (statusCounts[status] ?? 0) + 1;
   }
 
@@ -890,22 +854,10 @@ export function getCompletion() {
         ? Math.round((totalDeleted / allOrigs.size) * 10000) / 100
         : 0,
     },
-    deletionLogEntryCount: store.deletionLog.size,
-    sources: store.deletionLogSources,
+    deletionLogEntryCount: deletionLog.size,
+    sources: deletionLogSources,
     statusCounts,
   };
-}
-
-export function updateStubStatus(fileId: string, hasStub: boolean) {
-  let updated = 0;
-  for (const att of store.recordAttachments) {
-    if (att.fileId === fileId) {
-      att.hasStub = hasStub;
-      updated++;
-    }
-  }
-  return updated;
->>>>>>> d575c32a57cc02f308ea23a4d37e3dee18d3535c
 }
 
 function streamParseAllFilesFromPath(filePath: string): Promise<AllFileRecord[]> {
