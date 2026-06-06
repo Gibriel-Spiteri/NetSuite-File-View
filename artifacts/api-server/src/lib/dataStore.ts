@@ -912,6 +912,47 @@ export async function getCompletion() {
   };
 }
 
+// ── Completion state (persisted in DB) ────────────────────────────────────────
+
+export async function ensureCompletionStateTable(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS completion_state (
+      record_type  TEXT PRIMARY KEY,
+      manually_done BOOLEAN NOT NULL DEFAULT FALSE,
+      notes        TEXT    NOT NULL DEFAULT ''
+    )
+  `);
+}
+
+export async function getCompletionState(): Promise<Array<{ recordType: string; manuallyDone: boolean; notes: string }>> {
+  const result = await pool.query<{ record_type: string; manually_done: boolean; notes: string }>(
+    "SELECT record_type, manually_done, notes FROM completion_state",
+  );
+  return result.rows.map((r) => ({
+    recordType: r.record_type,
+    manuallyDone: r.manually_done,
+    notes: r.notes,
+  }));
+}
+
+export async function upsertCompletionState(
+  recordType: string,
+  patch: { manuallyDone?: boolean; notes?: string },
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO completion_state (record_type, manually_done, notes)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (record_type) DO UPDATE SET
+       manually_done = COALESCE(EXCLUDED.manually_done, completion_state.manually_done),
+       notes         = COALESCE(EXCLUDED.notes,         completion_state.notes)`,
+    [
+      recordType,
+      patch.manuallyDone ?? null,
+      patch.notes ?? null,
+    ],
+  );
+}
+
 function streamParseAllFilesFromPath(filePath: string): Promise<AllFileRecord[]> {
   return new Promise((resolve, reject) => {
     const records: AllFileRecord[] = [];
@@ -951,12 +992,14 @@ function streamInsertRecordAttachmentsFromPath(filePath: string): Promise<number
     rl.on("line", (line) => {
       const parts = parseCsvLine(line);
       if (parts.length < 9) return;
-      const recordType = parts[0];
+      const [recordType, recordId, recordName, recordStatus, fileId, fileName, sizeBytesStr, fileType, hasStubStr, isStubStr] = parts;
       if (!recordType || recordType === "record_type") return;
       const sizeBytes = parseInt(sizeBytesStr, 10) || 0;
       const norm = hasStubStr?.toLowerCase();
       const hasStub = norm === "true" || norm === "1" || norm === "yes";
-      batch.push({ recordType, recordId, recordName, recordStatus: recordStatus ?? "", fileId, fileName, sizeBytes, fileType, hasStub });
+      const isStubNorm = isStubStr?.toLowerCase();
+      const isStub = isStubNorm === "true" || isStubNorm === "1" || isStubNorm === "yes";
+      batch.push({ recordType, recordId, recordName, recordStatus: recordStatus ?? "", fileId, fileName, sizeBytes, fileType, hasStub, isStub });
       if (batch.length >= STREAM_BATCH) {
         flush(batch);
         batch = [];

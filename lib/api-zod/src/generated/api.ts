@@ -111,6 +111,34 @@ export const GetCompletionResponse = zod.object({
 
 
 /**
+ * @summary Get persisted completion state (checkboxes + notes) for all record types
+ */
+export const GetCompletionStateResponseItem = zod.object({
+  "recordType": zod.string(),
+  "manuallyDone": zod.boolean(),
+  "notes": zod.string()
+})
+export const GetCompletionStateResponse = zod.array(GetCompletionStateResponseItem)
+
+
+/**
+ * @summary Upsert manuallyDone and/or notes for a record type
+ */
+export const PatchCompletionStateParams = zod.object({
+  "recordType": zod.coerce.string()
+})
+
+export const PatchCompletionStateBody = zod.object({
+  "manuallyDone": zod.boolean().optional(),
+  "notes": zod.string().optional()
+})
+
+export const PatchCompletionStateResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
  * @summary List files with error statuses in the deletion log, with their attached records
  */
 export const GetCompletionErrorsResponse = zod.object({

@@ -15,6 +15,8 @@ import {
   reloadDataFromDisk,
   getCompletion,
   getCompletionErrors,
+  getCompletionState,
+  upsertCompletionState,
 } from "../lib/dataStore";
 import {
   UploadDataBody,
@@ -145,6 +147,21 @@ router.get("/data/completion/errors", async (_req, res): Promise<void> => {
 
 router.delete("/data/deletion-log", async (_req, res): Promise<void> => {
   clearDeletionLog();
+  res.json({ success: true });
+});
+
+router.get("/data/completion-state", async (_req, res): Promise<void> => {
+  res.json(await getCompletionState());
+});
+
+router.patch("/data/completion-state/:recordType", async (req, res): Promise<void> => {
+  const { recordType } = req.params;
+  const { manuallyDone, notes } = req.body as { manuallyDone?: boolean; notes?: string };
+  if (manuallyDone === undefined && notes === undefined) {
+    res.status(400).json({ error: "Provide at least one of: manuallyDone, notes" });
+    return;
+  }
+  await upsertCompletionState(recordType, { manuallyDone, notes });
   res.json({ success: true });
 });
 

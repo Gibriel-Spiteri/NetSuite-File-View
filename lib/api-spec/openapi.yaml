@@ -134,6 +134,50 @@ paths:
               schema:
                 $ref: "#/components/schemas/CompletionResponse"
 
+  /data/completion-state:
+    get:
+      operationId: getCompletionState
+      tags: [data]
+      summary: Get persisted completion state (checkboxes + notes) for all record types
+      responses:
+        "200":
+          description: Array of completion state rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CompletionStateRow"
+
+  /data/completion-state/{recordType}:
+    patch:
+      operationId: patchCompletionState
+      tags: [data]
+      summary: Upsert manuallyDone and/or notes for a record type
+      parameters:
+        - name: recordType
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompletionStatePatch"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success]
+                properties:
+                  success:
+                    type: boolean
+
   /data/completion/errors:
     get:
       operationId: getCompletionErrors
@@ -632,6 +676,25 @@ components:
           type: number
         totalSizeBytes:
           type: integer
+
+    CompletionStateRow:
+      type: object
+      required: [recordType, manuallyDone, notes]
+      properties:
+        recordType:
+          type: string
+        manuallyDone:
+          type: boolean
+        notes:
+          type: string
+
+    CompletionStatePatch:
+      type: object
+      properties:
+        manuallyDone:
+          type: boolean
+        notes:
+          type: string
 
     NetsuiteStatus:
       type: object

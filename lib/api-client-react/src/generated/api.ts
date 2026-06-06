@@ -24,6 +24,8 @@ import type {
   ClearDeletionLog200,
   CompletionErrorsResponse,
   CompletionResponse,
+  CompletionStatePatch,
+  CompletionStateRow,
   DashboardSummary,
   DataStatus,
   DataUploadInput,
@@ -34,6 +36,7 @@ import type {
   ListAllFilesParams,
   ListRecordsParams,
   NetsuiteStatus,
+  PatchCompletionState200,
   RecordListResponse,
   RecordTypeSummary,
   RefreshStubInput,
@@ -517,6 +520,155 @@ export function useGetCompletion<TData = Awaited<ReturnType<typeof getCompletion
 
 
 
+
+export const getGetCompletionStateUrl = () => {
+
+
+
+
+  return `/api/data/completion-state`
+}
+
+/**
+ * @summary Get persisted completion state (checkboxes + notes) for all record types
+ */
+export const getCompletionState = async ( options?: RequestInit): Promise<CompletionStateRow[]> => {
+
+  return customFetch<CompletionStateRow[]>(getGetCompletionStateUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCompletionStateQueryKey = () => {
+    return [
+    `/api/data/completion-state`
+    ] as const;
+    }
+
+
+export const getGetCompletionStateQueryOptions = <TData = Awaited<ReturnType<typeof getCompletionState>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCompletionState>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCompletionStateQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCompletionState>>> = ({ signal }) => getCompletionState({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCompletionState>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCompletionStateQueryResult = NonNullable<Awaited<ReturnType<typeof getCompletionState>>>
+export type GetCompletionStateQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get persisted completion state (checkboxes + notes) for all record types
+ */
+
+export function useGetCompletionState<TData = Awaited<ReturnType<typeof getCompletionState>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCompletionState>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCompletionStateQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getPatchCompletionStateUrl = (recordType: string,) => {
+
+
+
+
+  return `/api/data/completion-state/${recordType}`
+}
+
+/**
+ * @summary Upsert manuallyDone and/or notes for a record type
+ */
+export const patchCompletionState = async (recordType: string,
+    completionStatePatch: CompletionStatePatch, options?: RequestInit): Promise<PatchCompletionState200> => {
+
+  return customFetch<PatchCompletionState200>(getPatchCompletionStateUrl(recordType),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      completionStatePatch,)
+  }
+);}
+
+
+
+
+export const getPatchCompletionStateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof patchCompletionState>>, TError,{recordType: string;data: BodyType<CompletionStatePatch>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof patchCompletionState>>, TError,{recordType: string;data: BodyType<CompletionStatePatch>}, TContext> => {
+
+const mutationKey = ['patchCompletionState'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof patchCompletionState>>, {recordType: string;data: BodyType<CompletionStatePatch>}> = (props) => {
+          const {recordType,data} = props ?? {};
+
+          return  patchCompletionState(recordType,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PatchCompletionStateMutationResult = NonNullable<Awaited<ReturnType<typeof patchCompletionState>>>
+    export type PatchCompletionStateMutationBody = BodyType<CompletionStatePatch>
+    export type PatchCompletionStateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Upsert manuallyDone and/or notes for a record type
+ */
+export const usePatchCompletionState = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof patchCompletionState>>, TError,{recordType: string;data: BodyType<CompletionStatePatch>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof patchCompletionState>>,
+        TError,
+        {recordType: string;data: BodyType<CompletionStatePatch>},
+        TContext
+      > => {
+      return useMutation(getPatchCompletionStateMutationOptions(options));
+    }
 
 export const getGetCompletionErrorsUrl = () => {
 

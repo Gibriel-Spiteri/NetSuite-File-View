@@ -187,6 +187,17 @@ export interface StubCoverageByType {
   totalSizeBytes: number;
 }
 
+export interface CompletionStateRow {
+  recordType: string;
+  manuallyDone: boolean;
+  notes: string;
+}
+
+export interface CompletionStatePatch {
+  manuallyDone?: boolean;
+  notes?: string;
+}
+
 export interface NetsuiteStatus {
   configured: boolean;
   /** @nullable */
@@ -232,6 +243,10 @@ export const ListRecordsSort = {
   record_name: 'record_name',
   record_type: 'record_type',
 } as const;
+
+export type PatchCompletionState200 = {
+  success: boolean;
+};
 
 export type ClearDeletionLog200 = {
   success: boolean;

@@ -1,9 +1,13 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import {
   useGetCompletion,
   useUploadData,
   useClearDeletionLog,
   getGetCompletionQueryKey,
+  useGetCompletionState,
+  getGetCompletionStateQueryKey,
+  usePatchCompletionState,
+  type CompletionStateRow,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,41 +21,10 @@ import { UploadCloud, FileCheck2, AlertCircle, Trash2, CheckCircle2, ArrowUpDown
 type SortKey = "recordType" | "totalOrigs" | "deletedCount" | "remainingCount" | "errorCount" | "coveragePercent";
 type SortDir = "asc" | "desc";
 
-const STORAGE_KEY_DONE = "completion-manually-done";
-const STORAGE_KEY_NOTES = "completion-notes";
-
-function loadManuallyDone(): Set<string> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_DONE);
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function saveManuallyDone(set: Set<string>) {
-  try {
-    localStorage.setItem(STORAGE_KEY_DONE, JSON.stringify([...set]));
-  } catch { /* ignore */ }
-}
-
-function loadNotes(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_NOTES);
-    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveNotes(notes: Record<string, string>) {
-  try {
-    localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(notes));
-  } catch { /* ignore */ }
-}
-
 export function Completion() {
   const { data, isLoading } = useGetCompletion();
+  const { data: stateRows } = useGetCompletionState();
+  const patchState = usePatchCompletionState();
   const uploadData = useUploadData();
   const clearLog = useClearDeletionLog();
   const { toast } = useToast();
@@ -61,10 +34,33 @@ export function Completion() {
 
   const [sortKey, setSortKey] = useState<SortKey>("deletedCount");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [manuallyDone, setManuallyDone] = useState<Set<string>>(loadManuallyDone);
-  const [notes, setNotes] = useState<Record<string, string>>(loadNotes);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: getGetCompletionQueryKey() });
+  // Local draft for notes so typing doesn't round-trip the server on every keystroke
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const noteDraftsRef = useRef(noteDrafts);
+  noteDraftsRef.current = noteDrafts;
+
+  // Seed local drafts from server data once on load
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current || !stateRows) return;
+    seededRef.current = true;
+    const seed: Record<string, string> = {};
+    for (const r of stateRows) if (r.notes) seed[r.recordType] = r.notes;
+    setNoteDrafts(seed);
+  }, [stateRows]);
+
+  // Derive checkbox state from server rows
+  const manuallyDone = new Set<string>(
+    (stateRows ?? []).filter((r) => r.manuallyDone).map((r) => r.recordType),
+  );
+
+  // Server notes (used to detect dirty drafts on blur)
+  const serverNotes: Record<string, string> = {};
+  for (const r of stateRows ?? []) serverNotes[r.recordType] = r.notes;
+
+  const invalidateCompletion = () => queryClient.invalidateQueries({ queryKey: getGetCompletionQueryKey() });
+  const invalidateState = () => queryClient.invalidateQueries({ queryKey: getGetCompletionStateQueryKey() });
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -75,25 +71,39 @@ export function Completion() {
     }
   };
 
-  const toggleDone = useCallback((recordType: string) => {
-    setManuallyDone((prev) => {
-      const next = new Set(prev);
-      if (next.has(recordType)) next.delete(recordType);
-      else next.add(recordType);
-      saveManuallyDone(next);
-      return next;
-    });
+  const toggleDone = useCallback((recordType: string, currentlyDone: boolean) => {
+    const next = !currentlyDone;
+    // Optimistic update
+    queryClient.setQueryData<CompletionStateRow[]>(
+      getGetCompletionStateQueryKey(),
+      (old) => {
+        if (!old) return [{ recordType, manuallyDone: next, notes: "" }];
+        const exists = old.some((r) => r.recordType === recordType);
+        if (exists) return old.map((r) => r.recordType === recordType ? { ...r, manuallyDone: next } : r);
+        return [...old, { recordType, manuallyDone: next, notes: serverNotes[recordType] ?? "" }];
+      },
+    );
+    patchState.mutate(
+      { recordType, data: { manuallyDone: next } },
+      { onError: () => invalidateState() },
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patchState, queryClient]);
+
+  const handleNoteChange = useCallback((recordType: string, value: string) => {
+    setNoteDrafts((prev) => ({ ...prev, [recordType]: value }));
   }, []);
 
-  const handleNote = useCallback((recordType: string, value: string) => {
-    setNotes((prev) => {
-      const next = { ...prev };
-      if (value.trim()) next[recordType] = value;
-      else delete next[recordType];
-      saveNotes(next);
-      return next;
-    });
-  }, []);
+  const handleNoteBlur = useCallback((recordType: string) => {
+    const draft = noteDraftsRef.current[recordType] ?? "";
+    const server = serverNotes[recordType] ?? "";
+    if (draft === server) return;
+    patchState.mutate(
+      { recordType, data: { notes: draft } },
+      { onSuccess: () => invalidateState(), onError: () => invalidateState() },
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patchState]);
 
   const handleFiles = async (files: FileList | File[]) => {
     const list = Array.from(files);
@@ -115,7 +125,7 @@ export function Completion() {
       });
     }
     toast({ title: "Deletion logs ingested", description: `Added ${totalAdded.toLocaleString()} rows from ${list.length} file(s).` });
-    invalidate();
+    invalidateCompletion();
   };
 
   const handleClear = () => {
@@ -123,7 +133,7 @@ export function Completion() {
     clearLog.mutate(undefined, {
       onSuccess: () => {
         toast({ title: "Deletion log cleared" });
-        invalidate();
+        invalidateCompletion();
       },
       onError: (err: Error) => toast({ title: "Clear failed", description: err.message, variant: "destructive" }),
     });
@@ -330,7 +340,7 @@ export function Completion() {
                       <TableCell className="pl-4 pr-0">
                         <Checkbox
                           checked={done}
-                          onCheckedChange={() => toggleDone(row.recordType)}
+                          onCheckedChange={() => toggleDone(row.recordType, done)}
                           aria-label={`Mark ${row.recordType} as done`}
                         />
                       </TableCell>
@@ -356,8 +366,9 @@ export function Completion() {
                       <TableCell>
                         <input
                           type="text"
-                          value={notes[row.recordType] ?? ""}
-                          onChange={(e) => handleNote(row.recordType, e.target.value)}
+                          value={noteDrafts[row.recordType] ?? ""}
+                          onChange={(e) => handleNoteChange(row.recordType, e.target.value)}
+                          onBlur={() => handleNoteBlur(row.recordType)}
                           placeholder="Add a note…"
                           className="w-full min-w-[160px] bg-transparent border-0 border-b border-transparent hover:border-muted-foreground/40 focus:border-primary focus:outline-none text-xs py-0.5 placeholder:text-muted-foreground/50 transition-colors"
                         />
