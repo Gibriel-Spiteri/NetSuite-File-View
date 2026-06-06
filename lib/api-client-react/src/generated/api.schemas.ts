@@ -51,12 +51,33 @@ export interface CompletionOverall {
   coveragePercent: number;
 }
 
+export type CompletionResponseStatusCounts = {[key: string]: number};
+
 export interface CompletionResponse {
   perType: CompletionPerType[];
   overall: CompletionOverall;
   deletionLogEntryCount: number;
   sources: string[];
-  statusCounts: Record<string, number>;
+  statusCounts: CompletionResponseStatusCounts;
+}
+
+export interface CompletionErrorRecord {
+  recordType: string;
+  recordId: string;
+  recordName: string;
+}
+
+export interface CompletionErrorEntry {
+  fileId: string;
+  status: string;
+  /** @nullable */
+  fileName?: string | null;
+  records: CompletionErrorRecord[];
+}
+
+export interface CompletionErrorsResponse {
+  errors: CompletionErrorEntry[];
+  totalErrorFiles: number;
 }
 
 export interface DataUploadResult {
@@ -211,6 +232,10 @@ export const ListRecordsSort = {
   record_name: 'record_name',
   record_type: 'record_type',
 } as const;
+
+export type ClearDeletionLog200 = {
+  success: boolean;
+};
 
 export type ListAllFilesParams = {
 folderId?: string;

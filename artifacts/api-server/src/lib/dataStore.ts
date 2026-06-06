@@ -763,6 +763,58 @@ export async function updateStubStatus(fileId: string, hasStub: boolean): Promis
   return result.rowCount ?? 0;
 }
 
+// Files with error statuses in the deletion log, joined with their attached records.
+export async function getCompletionErrors() {
+  const errorEntries: Array<{ fileId: string; status: string }> = [];
+  for (const [fileId, status] of deletionLog.entries()) {
+    if (status.startsWith("error:")) {
+      errorEntries.push({ fileId, status });
+    }
+  }
+
+  if (errorEntries.length === 0) {
+    return { errors: [], totalErrorFiles: 0 };
+  }
+
+  const fileIds = errorEntries.map((e) => e.fileId);
+  const result = await pool.query<{
+    file_id: string;
+    file_name: string;
+    record_type: string;
+    record_id: string;
+    record_name: string;
+  }>(
+    `SELECT DISTINCT ra.file_id, ra.file_name, ra.record_type, ra.record_id, ra.record_name
+     FROM record_attachments ra
+     WHERE ra.file_id = ANY($1) AND ra.file_type != 'HTMLDOC'
+     ORDER BY ra.file_id, ra.record_type`,
+    [fileIds],
+  );
+
+  const byFileId = new Map<string, { fileName: string; records: Array<{ recordType: string; recordId: string; recordName: string }> }>();
+  for (const row of result.rows) {
+    if (!byFileId.has(row.file_id)) {
+      byFileId.set(row.file_id, { fileName: row.file_name, records: [] });
+    }
+    byFileId.get(row.file_id)!.records.push({
+      recordType: row.record_type,
+      recordId: row.record_id,
+      recordName: row.record_name,
+    });
+  }
+
+  const errors = errorEntries.map(({ fileId, status }) => ({
+    fileId,
+    status,
+    fileName: byFileId.get(fileId)?.fileName ?? null,
+    records: byFileId.get(fileId)?.records ?? [],
+  }));
+
+  errors.sort((a, b) => a.status.localeCompare(b.status) || a.fileId.localeCompare(b.fileId));
+
+  return { errors, totalErrorFiles: errors.length };
+}
+
 // Per-recordType Phase 3 completion stats. Queries distinct orig fileIds
 // from the DB (has_stub=true, non-HTMLDOC), then cross-references with
 // the in-memory deletion log uploaded by the user.

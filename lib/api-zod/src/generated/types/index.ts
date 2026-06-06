@@ -7,6 +7,14 @@
  */
 
 export * from './attachedFile';
+export * from './clearDeletionLog200';
+export * from './completionErrorEntry';
+export * from './completionErrorRecord';
+export * from './completionErrorsResponse';
+export * from './completionOverall';
+export * from './completionPerType';
+export * from './completionResponse';
+export * from './completionResponseStatusCounts';
 export * from './dashboardSummary';
 export * from './dataStatus';
 export * from './dataUploadInput';

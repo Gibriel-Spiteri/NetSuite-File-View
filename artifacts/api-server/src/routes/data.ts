@@ -14,6 +14,7 @@ import {
   getVerificationItems,
   reloadDataFromDisk,
   getCompletion,
+  getCompletionErrors,
 } from "../lib/dataStore";
 import {
   UploadDataBody,
@@ -136,6 +137,10 @@ router.get("/data/stub-coverage", async (_req, res): Promise<void> => {
 
 router.get("/data/completion", async (_req, res): Promise<void> => {
   res.json(await getCompletion());
+});
+
+router.get("/data/completion/errors", async (_req, res): Promise<void> => {
+  res.json(await getCompletionErrors());
 });
 
 router.delete("/data/deletion-log", async (_req, res): Promise<void> => {

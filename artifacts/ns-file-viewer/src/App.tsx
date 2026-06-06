@@ -10,6 +10,7 @@ import { Records } from "./pages/records";
 import { Files } from "./pages/files";
 import { Verification } from "./pages/verification";
 import { Completion } from "./pages/completion";
+import { CompletionErrors } from "./pages/completion-errors";
 import { Upload } from "./pages/upload";
 import { NetsuiteConfig } from "./pages/netsuite";
 
@@ -31,6 +32,7 @@ function Router() {
         <Route path="/files" component={Files} />
         <Route path="/verification" component={Verification} />
         <Route path="/completion" component={Completion} />
+        <Route path="/completion/errors" component={CompletionErrors} />
         <Route path="/upload" component={Upload} />
         <Route path="/netsuite" component={NetsuiteConfig} />
         <Route component={NotFound} />

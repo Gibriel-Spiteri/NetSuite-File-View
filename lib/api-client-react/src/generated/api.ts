@@ -21,8 +21,10 @@ import type {
 
 import type {
   AttachedFile,
-  DashboardSummary,
+  ClearDeletionLog200,
+  CompletionErrorsResponse,
   CompletionResponse,
+  DashboardSummary,
   DataStatus,
   DataUploadInput,
   DataUploadResult,
@@ -439,20 +441,20 @@ export function useListRecords<TData = Awaited<ReturnType<typeof listRecords>>, 
 
 
 
-export const getGetRecordFilesUrl = (recordType: string, recordId: string,) => {
+export const getGetCompletionUrl = () => {
 
 
 
 
-  return `/api/data/records/${recordType}/${recordId}/files`
+  return `/api/data/completion`
 }
 
 /**
- * @summary Get all files attached to a specific record
+ * @summary Phase 3 completion stats per record type
  */
-export const getRecordFiles = async (recordType: string, recordId: string, options?: RequestInit): Promise<AttachedFile[]> => {
+export const getCompletion = async ( options?: RequestInit): Promise<CompletionResponse> => {
 
-  return customFetch<AttachedFile[]>(getGetRecordFilesUrl(recordType, recordId),
+  return customFetch<CompletionResponse>(getGetCompletionUrl(),
   {
     ...options,
     method: 'GET'
@@ -465,23 +467,251 @@ export const getRecordFiles = async (recordType: string, recordId: string, optio
 
 
 
-export const getGetRecordFilesQueryKey = (recordType: string, recordId: string,) => {
+export const getGetCompletionQueryKey = () => {
+    return [
+    `/api/data/completion`
+    ] as const;
+    }
+
+
+export const getGetCompletionQueryOptions = <TData = Awaited<ReturnType<typeof getCompletion>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCompletion>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCompletionQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCompletion>>> = ({ signal }) => getCompletion({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCompletion>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCompletionQueryResult = NonNullable<Awaited<ReturnType<typeof getCompletion>>>
+export type GetCompletionQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Phase 3 completion stats per record type
+ */
+
+export function useGetCompletion<TData = Awaited<ReturnType<typeof getCompletion>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCompletion>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCompletionQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetCompletionErrorsUrl = () => {
+
+
+
+
+  return `/api/data/completion/errors`
+}
+
+/**
+ * @summary List files with error statuses in the deletion log, with their attached records
+ */
+export const getCompletionErrors = async ( options?: RequestInit): Promise<CompletionErrorsResponse> => {
+
+  return customFetch<CompletionErrorsResponse>(getGetCompletionErrorsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCompletionErrorsQueryKey = () => {
+    return [
+    `/api/data/completion/errors`
+    ] as const;
+    }
+
+
+export const getGetCompletionErrorsQueryOptions = <TData = Awaited<ReturnType<typeof getCompletionErrors>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCompletionErrors>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCompletionErrorsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCompletionErrors>>> = ({ signal }) => getCompletionErrors({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCompletionErrors>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCompletionErrorsQueryResult = NonNullable<Awaited<ReturnType<typeof getCompletionErrors>>>
+export type GetCompletionErrorsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List files with error statuses in the deletion log, with their attached records
+ */
+
+export function useGetCompletionErrors<TData = Awaited<ReturnType<typeof getCompletionErrors>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCompletionErrors>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCompletionErrorsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getClearDeletionLogUrl = () => {
+
+
+
+
+  return `/api/data/deletion-log`
+}
+
+/**
+ * @summary Clear all loaded deletion log rows
+ */
+export const clearDeletionLog = async ( options?: RequestInit): Promise<ClearDeletionLog200> => {
+
+  return customFetch<ClearDeletionLog200>(getClearDeletionLogUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getClearDeletionLogMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearDeletionLog>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof clearDeletionLog>>, TError,void, TContext> => {
+
+const mutationKey = ['clearDeletionLog'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearDeletionLog>>, void> = () => {
+
+
+          return  clearDeletionLog(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClearDeletionLogMutationResult = NonNullable<Awaited<ReturnType<typeof clearDeletionLog>>>
+
+    export type ClearDeletionLogMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Clear all loaded deletion log rows
+ */
+export const useClearDeletionLog = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clearDeletionLog>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof clearDeletionLog>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getClearDeletionLogMutationOptions(options));
+    }
+
+export const getGetRecordFilesUrl = (recordType: string,
+    recordId: string,) => {
+
+
+
+
+  return `/api/data/records/${recordType}/${recordId}/files`
+}
+
+/**
+ * @summary Get all files attached to a specific record
+ */
+export const getRecordFiles = async (recordType: string,
+    recordId: string, options?: RequestInit): Promise<AttachedFile[]> => {
+
+  return customFetch<AttachedFile[]>(getGetRecordFilesUrl(recordType,recordId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRecordFilesQueryKey = (recordType: string,
+    recordId: string,) => {
     return [
     `/api/data/records/${recordType}/${recordId}/files`
     ] as const;
     }
 
 
-export const getGetRecordFilesQueryOptions = <TData = Awaited<ReturnType<typeof getRecordFiles>>, TError = ErrorType<void>>(recordType: string, recordId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecordFiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetRecordFilesQueryOptions = <TData = Awaited<ReturnType<typeof getRecordFiles>>, TError = ErrorType<void>>(recordType: string,
+    recordId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecordFiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetRecordFilesQueryKey(recordType, recordId);
+  const queryKey =  queryOptions?.queryKey ?? getGetRecordFilesQueryKey(recordType,recordId);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRecordFiles>>> = ({ signal }) => getRecordFiles(recordType, recordId, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRecordFiles>>> = ({ signal }) => getRecordFiles(recordType,recordId, { signal, ...requestOptions });
 
 
 
@@ -499,11 +729,12 @@ export type GetRecordFilesQueryError = ErrorType<void>
  */
 
 export function useGetRecordFiles<TData = Awaited<ReturnType<typeof getRecordFiles>>, TError = ErrorType<void>>(
- recordType: string, recordId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecordFiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ recordType: string,
+    recordId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecordFiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetRecordFilesQueryOptions(recordType, recordId,options)
+  const queryOptions = getGetRecordFilesQueryOptions(recordType,recordId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -1056,56 +1287,3 @@ export const useRefreshStubStatus = <TError = ErrorType<unknown>,
       return useMutation(getRefreshStubStatusMutationOptions(options));
     }
 
-
-
-// ───────────────────────────────────────────────────────────────────
-// Phase 3 Completion endpoints (hand-added — keep in sync with
-// openapi.yaml: /data/completion GET, /data/deletion-log DELETE)
-// ───────────────────────────────────────────────────────────────────
-
-export const getGetCompletionUrl = () => `/api/data/completion`;
-
-export const getCompletion = async (options?: RequestInit): Promise<CompletionResponse> => {
-  return customFetch<CompletionResponse>(getGetCompletionUrl(), { ...options, method: 'GET' });
-};
-
-export const getGetCompletionQueryKey = () => [`/api/data/completion`] as const;
-
-export const getGetCompletionQueryOptions = <TData = Awaited<ReturnType<typeof getCompletion>>, TError = ErrorType<unknown>>(options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCompletion>>, TError, TData>; request?: SecondParameter<typeof customFetch> }) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-  const queryKey = queryOptions?.queryKey ?? getGetCompletionQueryKey();
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof getCompletion>>> = ({ signal }) => getCompletion({ signal, ...requestOptions });
-  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<Awaited<ReturnType<typeof getCompletion>>, TError, TData> & { queryKey: QueryKey };
-};
-
-export type GetCompletionQueryResult = NonNullable<Awaited<ReturnType<typeof getCompletion>>>;
-export type GetCompletionQueryError = ErrorType<unknown>;
-
-export function useGetCompletion<TData = Awaited<ReturnType<typeof getCompletion>>, TError = ErrorType<unknown>>(
-  options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getCompletion>>, TError, TData>; request?: SecondParameter<typeof customFetch> }
-): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetCompletionQueryOptions(options);
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-// DELETE /api/data/deletion-log — clears all loaded deletion log rows.
-
-export const getClearDeletionLogUrl = () => `/api/data/deletion-log`;
-
-export const clearDeletionLog = async (options?: RequestInit): Promise<{ success: boolean }> => {
-  return customFetch<{ success: boolean }>(getClearDeletionLogUrl(), { ...options, method: 'DELETE' });
-};
-
-export const getClearDeletionLogMutationOptions = <TError = ErrorType<unknown>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof clearDeletionLog>>, TError, void, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationOptions<Awaited<ReturnType<typeof clearDeletionLog>>, TError, void, TContext> => {
-  const { mutation: mutationOptions, request: requestOptions } = options ?? {};
-  const mutationFn: MutationFunction<Awaited<ReturnType<typeof clearDeletionLog>>, void> = () => clearDeletionLog(requestOptions);
-  return { mutationFn, ...mutationOptions };
-};
-
-export type ClearDeletionLogMutationResult = NonNullable<Awaited<ReturnType<typeof clearDeletionLog>>>;
-export type ClearDeletionLogMutationError = ErrorType<unknown>;
-
-export const useClearDeletionLog = <TError = ErrorType<unknown>, TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof clearDeletionLog>>, TError, void, TContext>; request?: SecondParameter<typeof customFetch> }): UseMutationResult<Awaited<ReturnType<typeof clearDeletionLog>>, TError, void, TContext> => {
-  return useMutation(getClearDeletionLogMutationOptions(options));
-};

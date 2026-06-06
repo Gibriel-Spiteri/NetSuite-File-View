@@ -12,4 +12,5 @@ export type DataUploadInputType = typeof DataUploadInputType[keyof typeof DataUp
 export const DataUploadInputType = {
   all_files: 'all_files',
   record_attachments: 'record_attachments',
+  deletion_log: 'deletion_log',
 } as const;

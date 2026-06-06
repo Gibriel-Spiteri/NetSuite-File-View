@@ -134,6 +134,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/CompletionResponse"
 
+  /data/completion/errors:
+    get:
+      operationId: getCompletionErrors
+      tags: [data]
+      summary: List files with error statuses in the deletion log, with their attached records
+      responses:
+        "200":
+          description: Error entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompletionErrorsResponse"
+
   /data/deletion-log:
     delete:
       operationId: clearDeletionLog
@@ -393,6 +406,34 @@ components:
         statusCounts:
           type: object
           additionalProperties: { type: integer }
+
+    CompletionErrorRecord:
+      type: object
+      required: [recordType, recordId, recordName]
+      properties:
+        recordType: { type: string }
+        recordId: { type: string }
+        recordName: { type: string }
+
+    CompletionErrorEntry:
+      type: object
+      required: [fileId, status, records]
+      properties:
+        fileId: { type: string }
+        status: { type: string }
+        fileName: { type: ["string", "null"] }
+        records:
+          type: array
+          items: { $ref: "#/components/schemas/CompletionErrorRecord" }
+
+    CompletionErrorsResponse:
+      type: object
+      required: [errors, totalErrorFiles]
+      properties:
+        errors:
+          type: array
+          items: { $ref: "#/components/schemas/CompletionErrorEntry" }
+        totalErrorFiles: { type: integer }
 
     DataUploadResult:
       type: object

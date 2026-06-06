@@ -84,6 +84,59 @@ export const ListRecordsResponse = zod.object({
 
 
 /**
+ * @summary Phase 3 completion stats per record type
+ */
+export const GetCompletionResponse = zod.object({
+  "perType": zod.array(zod.object({
+  "recordType": zod.string(),
+  "totalOrigs": zod.number(),
+  "deletedCount": zod.number(),
+  "remainingCount": zod.number(),
+  "coveragePercent": zod.number(),
+  "errorCount": zod.number(),
+  "protectedCount": zod.number()
+})),
+  "overall": zod.object({
+  "totalOrigs": zod.number(),
+  "totalDeleted": zod.number(),
+  "totalRemaining": zod.number(),
+  "totalErrors": zod.number(),
+  "totalProtected": zod.number(),
+  "coveragePercent": zod.number()
+}),
+  "deletionLogEntryCount": zod.number(),
+  "sources": zod.array(zod.string()),
+  "statusCounts": zod.record(zod.string(), zod.number())
+})
+
+
+/**
+ * @summary List files with error statuses in the deletion log, with their attached records
+ */
+export const GetCompletionErrorsResponse = zod.object({
+  "errors": zod.array(zod.object({
+  "fileId": zod.string(),
+  "status": zod.string(),
+  "fileName": zod.string().nullish(),
+  "records": zod.array(zod.object({
+  "recordType": zod.string(),
+  "recordId": zod.string(),
+  "recordName": zod.string()
+}))
+})),
+  "totalErrorFiles": zod.number()
+})
+
+
+/**
+ * @summary Clear all loaded deletion log rows
+ */
+export const ClearDeletionLogResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
  * @summary Get all files attached to a specific record
  */
 export const GetRecordFilesParams = zod.object({

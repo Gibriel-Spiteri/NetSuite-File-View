@@ -11,4 +11,6 @@ export interface DataUploadInput {
   type: DataUploadInputType;
   /** Raw file content (CSV or pipe-delimited) */
   content: string;
+  /** Optional label for the upload — used for deletion_log to track which logs have been ingested */
+  source?: string;
 }
