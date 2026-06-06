@@ -1,13 +1,16 @@
-import { useState } from "react";
-import { useGetCompletionErrors } from "@workspace/api-client-react";
+import { useState, Fragment } from "react";
+import { useGetCompletionErrors, useGetNetsuiteStatus } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertTriangle, ChevronDown, ChevronRight, Search } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Search } from "lucide-react";
+import { nsRecordUrl } from "@/lib/ns-url";
 
 export function CompletionErrors() {
   const { data, isLoading } = useGetCompletionErrors();
+  const { data: nsStatus } = useGetNetsuiteStatus();
+  const accountId = nsStatus?.accountId ?? null;
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -112,7 +115,7 @@ export function CompletionErrors() {
                 filtered.map((entry) => {
                   const open = expanded.has(entry.fileId);
                   return (
-                    <>
+                    <Fragment key={entry.fileId}>
                       <TableRow
                         key={entry.fileId}
                         className={`cursor-pointer hover:bg-muted/50 ${open ? "bg-muted/30" : ""}`}
@@ -145,31 +148,51 @@ export function CompletionErrors() {
                         </TableCell>
                       </TableRow>
                       {open && (
-                        <TableRow key={`${entry.fileId}-detail`} className="bg-muted/20">
+                        <TableRow className="bg-muted/20">
                           <TableCell colSpan={5} className="py-0">
                             <div className="ml-8 border-l-2 border-muted-foreground/20 pl-4 py-3 space-y-1.5">
                               <div className="text-xs font-medium text-muted-foreground mb-2">
                                 Attached records
                               </div>
-                              {entry.records.map((r) => (
-                                <div
-                                  key={`${r.recordType}-${r.recordId}`}
-                                  className="flex items-center gap-3 text-sm"
-                                >
-                                  <Badge variant="outline" className="text-xs shrink-0">
-                                    {r.recordType}
-                                  </Badge>
-                                  <span className="font-mono text-xs text-muted-foreground shrink-0">
-                                    #{r.recordId}
-                                  </span>
-                                  <span className="truncate">{r.recordName}</span>
-                                </div>
-                              ))}
+                              {entry.records.map((r) => {
+                                const url = accountId
+                                  ? nsRecordUrl(accountId, r.recordType, r.recordId)
+                                  : null;
+                                return (
+                                  <div
+                                    key={`${r.recordType}-${r.recordId}`}
+                                    className="flex items-center gap-3 text-sm"
+                                  >
+                                    <Badge variant="outline" className="text-xs shrink-0">
+                                      {r.recordType}
+                                    </Badge>
+                                    <span className="font-mono text-xs text-muted-foreground shrink-0">
+                                      #{r.recordId}
+                                    </span>
+                                    <span className="truncate flex-1">{r.recordName}</span>
+                                    {url ? (
+                                      <a
+                                        href={url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="shrink-0 flex items-center gap-1 text-xs text-primary hover:underline"
+                                      >
+                                        Open <ExternalLink className="h-3 w-3" />
+                                      </a>
+                                    ) : (
+                                      <span className="shrink-0 text-xs text-muted-foreground italic">
+                                        (configure NS to link)
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           </TableCell>
                         </TableRow>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })
               )}
