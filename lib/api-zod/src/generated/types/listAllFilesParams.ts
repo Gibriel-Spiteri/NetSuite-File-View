@@ -5,12 +5,14 @@
  * NetSuite Record-File Viewer API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListAllFilesSort } from './listAllFilesSort';
 import type { ListAllFilesStubStatus } from './listAllFilesStubStatus';
 
 export type ListAllFilesParams = {
 folderId?: string;
 search?: string;
 stubStatus?: ListAllFilesStubStatus;
+sort?: ListAllFilesSort;
 limit?: number;
 offset?: number;
 };

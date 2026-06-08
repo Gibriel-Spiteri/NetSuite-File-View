@@ -17,4 +17,6 @@ export interface FileItem {
   sizeBytes: number;
   hasStub: boolean;
   attachedRecordCount: number;
+  /** @nullable */
+  createdDate?: string | null;
 }

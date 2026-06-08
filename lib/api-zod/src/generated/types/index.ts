@@ -28,6 +28,7 @@ export * from './fileRecordItem';
 export * from './getVerificationItemsParams';
 export * from './healthStatus';
 export * from './listAllFilesParams';
+export * from './listAllFilesSort';
 export * from './listAllFilesStubStatus';
 export * from './listRecordsParams';
 export * from './listRecordsSort';

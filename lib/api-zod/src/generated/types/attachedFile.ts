@@ -20,4 +20,6 @@ export interface AttachedFile {
   folderId?: string | null;
   /** @nullable */
   folderName?: string | null;
+  /** @nullable */
+  createdDate?: string | null;
 }
