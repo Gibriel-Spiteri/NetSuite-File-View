@@ -210,7 +210,7 @@ export const ListAllFilesQueryParams = zod.object({
   "folderId": zod.coerce.string().optional(),
   "search": zod.coerce.string().optional(),
   "stubStatus": zod.enum(['all', 'has_stub', 'missing_stub']).optional(),
-  "sort": zod.enum(['file_id_asc', 'file_id_desc', 'file_name', 'records_desc', 'records_asc', 'created_date_desc', 'created_date_asc']).optional(),
+  "sort": zod.enum(['file_id_asc', 'file_id_desc', 'file_name', 'records_desc', 'records_asc']).optional(),
   "limit": zod.coerce.number().optional(),
   "offset": zod.coerce.number().optional()
 })

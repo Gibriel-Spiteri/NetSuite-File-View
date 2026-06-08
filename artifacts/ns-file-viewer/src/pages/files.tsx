@@ -136,8 +136,6 @@ export function Files() {
               <SelectItem value="file_name">File Name A–Z</SelectItem>
               <SelectItem value="records_desc">Records ↓</SelectItem>
               <SelectItem value="records_asc">Records ↑</SelectItem>
-              <SelectItem value="created_date_desc">Created ↓</SelectItem>
-              <SelectItem value="created_date_asc">Created ↑</SelectItem>
             </SelectContent>
           </Select>
 

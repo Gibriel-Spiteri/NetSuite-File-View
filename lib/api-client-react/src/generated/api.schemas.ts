@@ -288,8 +288,6 @@ export const ListAllFilesSort = {
   file_name: 'file_name',
   records_desc: 'records_desc',
   records_asc: 'records_asc',
-  created_date_desc: 'created_date_desc',
-  created_date_asc: 'created_date_asc',
 } as const;
 
 export type GetVerificationItemsParams = {

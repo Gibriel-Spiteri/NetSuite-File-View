@@ -544,26 +544,26 @@ export async function getAllFiles(opts: {
 }) {
   const { folderId, search, sort, limit = 50, offset = 0 } = opts;
   const stubStatus = opts.stubStatus === "all" ? null : (opts.stubStatus ?? null);
+  const sortByRecords = sort === "records_desc" || sort === "records_asc";
 
-  // ORDER BY expressions — two variants: with/without table alias prefix
-  const innerOrderBy = sort === "file_id_desc" ? "file_id DESC"
+  // ORDER BY without any table alias — safe to use in subqueries and CTEs
+  const sortExpr = sort === "file_id_desc" ? "CAST(file_id AS BIGINT) DESC"
     : sort === "file_id_asc" ? "CAST(file_id AS BIGINT) ASC"
+    : sort === "records_desc" ? "attached_record_count DESC, file_name"
+    : sort === "records_asc" ? "attached_record_count ASC, file_name"
     : "file_name";
-  const outerOrderBy = sort === "file_id_desc" ? "af.file_id DESC"
-    : sort === "file_id_asc" ? "CAST(af.file_id AS BIGINT) ASC"
-    : sort === "records_desc" ? "attached_record_count DESC, af.file_name"
-    : sort === "records_asc" ? "attached_record_count ASC, af.file_name"
-    : "af.file_name";
 
-  // Fast path: when no stub filter AND not sorting by aggregated field (record count).
+  // Fast path: no stub filter AND no records sort.
   // Paginates all_files first, then joins only the current page — avoids a 2M-row HashAggregate.
-  const useFastPath = stubStatus === null && sort !== "records_desc" && sort !== "records_asc";
-
-  if (useFastPath) {
+  if (stubStatus === null && !sortByRecords) {
     const baseParams: (string | number | null)[] = [folderId ?? null, search ?? null];
     const whereClause = `
       ($1::text IS NULL OR folder_id = $1)
       AND ($2::text IS NULL OR file_name ILIKE '%' || $2 || '%' OR file_id ILIKE '%' || $2 || '%')`;
+    // Outer query alias prefix is safe here because af comes from the subquery alias
+    const outerSortExpr = sort === "file_id_desc" ? "CAST(af.file_id AS BIGINT) DESC"
+      : sort === "file_id_asc" ? "CAST(af.file_id AS BIGINT) ASC"
+      : "af.file_name";
 
     const [countResult, pageResult] = await Promise.all([
       pool.query<{ total: string }>(
@@ -588,12 +588,12 @@ export async function getAllFiles(opts: {
           SELECT file_id, file_name, folder_id, folder_name
           FROM all_files
           WHERE ${whereClause}
-          ORDER BY ${innerOrderBy}
+          ORDER BY ${sortExpr}
           LIMIT $3 OFFSET $4
         ) af
         LEFT JOIN record_attachments ra ON af.file_id = ra.file_id
         GROUP BY af.file_id, af.file_name, af.folder_id, af.folder_name
-        ORDER BY ${outerOrderBy}`,
+        ORDER BY ${outerSortExpr}`,
         [...baseParams, limit, offset],
       ),
     ]);
@@ -615,7 +615,9 @@ export async function getAllFiles(opts: {
     };
   }
 
-  // Filtered path (has_stub / missing_stub): must aggregate all rows to apply stub filter.
+  // Aggregate path: stub filter (has_stub/missing_stub) OR records-count sort.
+  // Scans all matching rows to compute counts/stubs, then filters/sorts/paginates.
+  // $3 IS NULL means no stub filter (all rows pass).
   const result = await pool.query<{
     file_id: string;
     file_name: string;
@@ -640,15 +642,13 @@ export async function getAllFiles(opts: {
       WHERE ($1::text IS NULL OR af.folder_id = $1)
         AND ($2::text IS NULL OR af.file_name ILIKE '%' || $2 || '%' OR af.file_id ILIKE '%' || $2 || '%')
       GROUP BY af.file_id, af.file_name, af.folder_id, af.folder_name
-    ),
-    filtered AS (
-      SELECT * FROM file_stats
-      WHERE ($3 = 'has_stub' AND has_stub = true)
-         OR ($3 = 'missing_stub' AND has_stub = false)
     )
     SELECT *, COUNT(*) OVER() AS total_count
-    FROM filtered
-    ORDER BY ${outerOrderBy}
+    FROM file_stats
+    WHERE ($3::text IS NULL
+       OR ($3 = 'has_stub' AND has_stub = true)
+       OR ($3 = 'missing_stub' AND has_stub = false))
+    ORDER BY ${sortExpr}
     LIMIT $4 OFFSET $5`,
     [folderId ?? null, search ?? null, stubStatus, limit, offset],
   );

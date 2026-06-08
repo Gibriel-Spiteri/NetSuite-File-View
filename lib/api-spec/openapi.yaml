@@ -284,7 +284,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [file_id_asc, file_id_desc, file_name, records_desc, records_asc, created_date_desc, created_date_asc]
+            enum: [file_id_asc, file_id_desc, file_name, records_desc, records_asc]
         - name: limit
           in: query
           required: false
