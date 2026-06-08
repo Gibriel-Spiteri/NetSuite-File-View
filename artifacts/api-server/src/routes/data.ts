@@ -17,6 +17,7 @@ import {
   getCompletionErrors,
   getCompletionState,
   upsertCompletionState,
+  getFileRecords,
 } from "../lib/dataStore";
 import {
   UploadDataBody,
@@ -148,6 +149,10 @@ router.get("/data/completion/errors", async (_req, res): Promise<void> => {
 router.delete("/data/deletion-log", async (_req, res): Promise<void> => {
   clearDeletionLog();
   res.json({ success: true });
+});
+
+router.get("/data/files/:fileId/records", async (req, res): Promise<void> => {
+  res.json(await getFileRecords(req.params.fileId));
 });
 
 router.get("/data/completion-state", async (_req, res): Promise<void> => {

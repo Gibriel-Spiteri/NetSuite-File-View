@@ -31,6 +31,7 @@ import type {
   DataUploadInput,
   DataUploadResult,
   FileListResponse,
+  FileRecordItem,
   GetVerificationItemsParams,
   HealthStatus,
   ListAllFilesParams,
@@ -509,6 +510,83 @@ export function useGetCompletion<TData = Awaited<ReturnType<typeof getCompletion
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetCompletionQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetFileRecordsUrl = (fileId: string,) => {
+
+
+
+
+  return `/api/data/files/${fileId}/records`
+}
+
+/**
+ * @summary Get all records that a file is attached to
+ */
+export const getFileRecords = async (fileId: string, options?: RequestInit): Promise<FileRecordItem[]> => {
+
+  return customFetch<FileRecordItem[]>(getGetFileRecordsUrl(fileId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetFileRecordsQueryKey = (fileId: string,) => {
+    return [
+    `/api/data/files/${fileId}/records`
+    ] as const;
+    }
+
+
+export const getGetFileRecordsQueryOptions = <TData = Awaited<ReturnType<typeof getFileRecords>>, TError = ErrorType<unknown>>(fileId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFileRecords>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetFileRecordsQueryKey(fileId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFileRecords>>> = ({ signal }) => getFileRecords(fileId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(fileId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getFileRecords>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetFileRecordsQueryResult = NonNullable<Awaited<ReturnType<typeof getFileRecords>>>
+export type GetFileRecordsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get all records that a file is attached to
+ */
+
+export function useGetFileRecords<TData = Awaited<ReturnType<typeof getFileRecords>>, TError = ErrorType<unknown>>(
+ fileId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFileRecords>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetFileRecordsQueryOptions(fileId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -134,6 +134,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/CompletionResponse"
 
+  /data/files/{fileId}/records:
+    get:
+      operationId: getFileRecords
+      tags: [data]
+      summary: Get all records that a file is attached to
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of records this file is attached to
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FileRecordItem"
+
   /data/completion-state:
     get:
       operationId: getCompletionState
@@ -676,6 +697,19 @@ components:
           type: number
         totalSizeBytes:
           type: integer
+
+    FileRecordItem:
+      type: object
+      required: [recordType, recordId, recordName, recordStatus]
+      properties:
+        recordType:
+          type: string
+        recordId:
+          type: string
+        recordName:
+          type: string
+        recordStatus:
+          type: string
 
     CompletionStateRow:
       type: object

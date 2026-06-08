@@ -111,6 +111,22 @@ export const GetCompletionResponse = zod.object({
 
 
 /**
+ * @summary Get all records that a file is attached to
+ */
+export const GetFileRecordsParams = zod.object({
+  "fileId": zod.coerce.string()
+})
+
+export const GetFileRecordsResponseItem = zod.object({
+  "recordType": zod.string(),
+  "recordId": zod.string(),
+  "recordName": zod.string(),
+  "recordStatus": zod.string()
+})
+export const GetFileRecordsResponse = zod.array(GetFileRecordsResponseItem)
+
+
+/**
  * @summary Get persisted completion state (checkboxes + notes) for all record types
  */
 export const GetCompletionStateResponseItem = zod.object({

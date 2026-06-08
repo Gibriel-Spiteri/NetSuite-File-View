@@ -187,6 +187,13 @@ export interface StubCoverageByType {
   totalSizeBytes: number;
 }
 
+export interface FileRecordItem {
+  recordType: string;
+  recordId: string;
+  recordName: string;
+  recordStatus: string;
+}
+
 export interface CompletionStateRow {
   recordType: string;
   manuallyDone: boolean;

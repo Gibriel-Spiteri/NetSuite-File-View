@@ -24,6 +24,7 @@ export * from './dataUploadInputType';
 export * from './dataUploadResult';
 export * from './fileItem';
 export * from './fileListResponse';
+export * from './fileRecordItem';
 export * from './getVerificationItemsParams';
 export * from './healthStatus';
 export * from './listAllFilesParams';

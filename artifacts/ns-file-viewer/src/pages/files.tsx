@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useListAllFiles } from "@workspace/api-client-react";
+import { useState, Fragment } from "react";
+import { useListAllFiles, useGetFileRecords, useGetNetsuiteStatus } from "@workspace/api-client-react";
 import type { ListAllFilesParams, ListAllFilesStubStatus } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,10 +7,63 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, ExternalLink, Loader2 } from "lucide-react";
 import { formatBytes } from "@/lib/format";
+import { nsRecordUrl } from "@/lib/ns-url";
 
 const PAGE_SIZES = [50, 100, 250, 500];
+
+function FileRecordDetail({ fileId, accountId }: { fileId: string; accountId: string | null }) {
+  const { data, isLoading } = useGetFileRecords(fileId);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-4 px-2 text-sm text-muted-foreground">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        Loading attached records…
+      </div>
+    );
+  }
+
+  if (!data?.length) {
+    return (
+      <div className="py-4 px-2 text-sm text-muted-foreground italic">
+        No records found in dataset for this file.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      {data.map((r) => {
+        const url = accountId ? nsRecordUrl(accountId, r.recordType, r.recordId) : null;
+        return (
+          <div
+            key={`${r.recordType}-${r.recordId}`}
+            className="flex items-center gap-3 text-sm py-0.5"
+          >
+            <Badge variant="outline" className="text-xs shrink-0">{r.recordType}</Badge>
+            <span className="font-mono text-xs text-muted-foreground shrink-0">#{r.recordId}</span>
+            <span className="truncate flex-1 text-xs">{r.recordName}</span>
+            {r.recordStatus && (
+              <span className="text-xs text-muted-foreground shrink-0 italic">{r.recordStatus}</span>
+            )}
+            {url ? (
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 flex items-center gap-1 text-xs text-primary hover:underline"
+              >
+                Open <ExternalLink className="h-3 w-3" />
+              </a>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function Files() {
   const [params, setParams] = useState<ListAllFilesParams>({
@@ -18,8 +71,11 @@ export function Files() {
     offset: 0,
     stubStatus: "all",
   });
+  const [expandedFileId, setExpandedFileId] = useState<string | null>(null);
 
   const { data, isLoading } = useListAllFiles(params);
+  const { data: nsStatus } = useGetNetsuiteStatus();
+  const accountId = nsStatus?.accountId ?? null;
 
   const total = data?.total ?? 0;
   const limit = params.limit ?? 100;
@@ -31,6 +87,11 @@ export function Files() {
 
   function goToPage(page: number) {
     setParams(p => ({ ...p, offset: (page - 1) * (p.limit ?? 100) }));
+    setExpandedFileId(null);
+  }
+
+  function toggleExpand(fileId: string) {
+    setExpandedFileId(prev => prev === fileId ? null : fileId);
   }
 
   return (
@@ -95,24 +156,69 @@ export function Files() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading files...</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    Loading files...
+                  </TableCell>
+                </TableRow>
               ) : !data?.files.length ? (
-                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No files found matching filters.</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    No files found matching filters.
+                  </TableCell>
+                </TableRow>
               ) : (
-                data.files.map(file => (
-                  <TableRow key={file.fileId}>
-                    <TableCell className="font-mono text-xs">{file.fileId}</TableCell>
-                    <TableCell className="max-w-[200px] truncate" title={file.fileName}>{file.fileName}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{file.folderName || "-"}</TableCell>
-                    <TableCell className="text-xs">{formatBytes(file.sizeBytes)}</TableCell>
-                    <TableCell className="text-right font-medium">{file.attachedRecordCount}</TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant={file.hasStub ? "outline" : "destructive"}>
-                        {file.hasStub ? "Stubbed" : "Missing"}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))
+                data.files.map(file => {
+                  const isOpen = expandedFileId === file.fileId;
+                  const hasRecords = file.attachedRecordCount > 0;
+                  return (
+                    <Fragment key={file.fileId}>
+                      <TableRow className={isOpen ? "bg-muted/30" : undefined}>
+                        <TableCell className="font-mono text-xs">{file.fileId}</TableCell>
+                        <TableCell className="max-w-[200px] truncate" title={file.fileName}>
+                          {file.fileName}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {file.folderName || "-"}
+                        </TableCell>
+                        <TableCell className="text-xs">{formatBytes(file.sizeBytes)}</TableCell>
+                        <TableCell className="text-right">
+                          {hasRecords ? (
+                            <button
+                              onClick={() => toggleExpand(file.fileId)}
+                              className="inline-flex items-center gap-1 font-medium text-primary hover:underline text-sm cursor-pointer"
+                              title="Click to see attached records"
+                            >
+                              {isOpen
+                                ? <ChevronDown className="h-3.5 w-3.5" />
+                                : <ChevronRightIcon className="h-3.5 w-3.5" />}
+                              {file.attachedRecordCount}
+                            </button>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">0</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={file.hasStub ? "outline" : "destructive"}>
+                            {file.hasStub ? "Stubbed" : "Missing"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                      {isOpen && (
+                        <TableRow className="bg-muted/10 hover:bg-muted/10">
+                          <TableCell colSpan={6} className="py-0">
+                            <div className="ml-6 border-l-2 border-primary/20 pl-4 py-3">
+                              <div className="text-xs font-medium text-muted-foreground mb-2">
+                                Attached records ({file.attachedRecordCount})
+                              </div>
+                              <FileRecordDetail fileId={file.fileId} accountId={accountId} />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -125,41 +231,17 @@ export function Files() {
               : "No files"}
           </span>
           <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => goToPage(1)}
-              disabled={currentPage === 1 || isLoading}
-            >
-              «
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => goToPage(currentPage - 1)}
-              disabled={currentPage === 1 || isLoading}
-            >
+            <Button variant="outline" size="sm" onClick={() => goToPage(1)} disabled={currentPage === 1 || isLoading}>«</Button>
+            <Button variant="outline" size="sm" onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1 || isLoading}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="px-3 py-1 text-sm">
               Page {currentPage.toLocaleString()} of {totalPages.toLocaleString()}
             </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => goToPage(currentPage + 1)}
-              disabled={currentPage >= totalPages || isLoading}
-            >
+            <Button variant="outline" size="sm" onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= totalPages || isLoading}>
               <ChevronRight className="h-4 w-4" />
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => goToPage(totalPages)}
-              disabled={currentPage >= totalPages || isLoading}
-            >
-              »
-            </Button>
+            <Button variant="outline" size="sm" onClick={() => goToPage(totalPages)} disabled={currentPage >= totalPages || isLoading}>»</Button>
           </div>
         </div>
       </Card>

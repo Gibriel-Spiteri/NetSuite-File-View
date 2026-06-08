@@ -513,6 +513,27 @@ export async function getRecordFiles(recordType: string, recordId: string) {
   });
 }
 
+export async function getFileRecords(fileId: string) {
+  const result = await pool.query<{
+    record_type: string;
+    record_id: string;
+    record_name: string;
+    record_status: string;
+  }>(
+    `SELECT DISTINCT record_type, record_id, record_name, record_status
+     FROM record_attachments
+     WHERE file_id = $1
+     ORDER BY record_type, record_id`,
+    [fileId],
+  );
+  return result.rows.map((r) => ({
+    recordType: r.record_type,
+    recordId: r.record_id,
+    recordName: r.record_name,
+    recordStatus: r.record_status,
+  }));
+}
+
 export async function getAllFiles(opts: {
   folderId?: string;
   search?: string;
