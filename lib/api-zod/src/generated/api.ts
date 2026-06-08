@@ -198,7 +198,8 @@ export const GetRecordFilesResponseItem = zod.object({
   "recordStatus": zod.string(),
   "stubFileName": zod.string().nullish(),
   "folderId": zod.string().nullish(),
-  "folderName": zod.string().nullish()
+  "folderName": zod.string().nullish(),
+  "createdDate": zod.string().nullish()
 })
 export const GetRecordFilesResponse = zod.array(GetRecordFilesResponseItem)
 
