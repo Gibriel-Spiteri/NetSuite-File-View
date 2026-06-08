@@ -103,11 +103,12 @@ router.get("/data/files", async (req, res): Promise<void> => {
     return;
   }
 
-  const { folderId, search, stubStatus, limit, offset } = parsed.data;
+  const { folderId, search, stubStatus, sort, limit, offset } = parsed.data;
   const result = getAllFiles({
     folderId: folderId ?? undefined,
     search: search ?? undefined,
     stubStatus: stubStatus ?? undefined,
+    sort: sort ?? undefined,
     limit: limit ?? 50,
     offset: offset ?? 0,
   });

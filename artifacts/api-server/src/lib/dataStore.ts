@@ -373,10 +373,11 @@ export function getAllFiles(opts: {
   folderId?: string;
   search?: string;
   stubStatus?: string;
+  sort?: string;
   limit?: number;
   offset?: number;
 }) {
-  const { folderId, search, stubStatus, limit = 50, offset = 0 } = opts;
+  const { folderId, search, stubStatus, sort, limit = 50, offset = 0 } = opts;
 
   const attachmentCountMap = new Map<string, number>();
   const stubMap = new Map<string, boolean>();
@@ -416,6 +417,38 @@ export function getAllFiles(opts: {
   } else if (stubStatus === "missing_stub") {
     files = files.filter((f) => !f.hasStub);
   }
+
+  // M/D/YYYY -> a sortable number (epoch ms). Null/invalid sort last
+  // in desc, first in asc — handled by the comparator below.
+  function parseDate(s: string | null): number {
+    if (!s) return NaN;
+    const t = new Date(s).getTime();
+    return isNaN(t) ? NaN : t;
+  }
+  const cmpDateDesc = (a: typeof files[number], b: typeof files[number]) => {
+    const da = parseDate(a.createdDate);
+    const db = parseDate(b.createdDate);
+    if (isNaN(da) && isNaN(db)) return 0;
+    if (isNaN(da)) return 1;
+    if (isNaN(db)) return -1;
+    return db - da;
+  };
+  const cmpDateAsc = (a: typeof files[number], b: typeof files[number]) => {
+    const da = parseDate(a.createdDate);
+    const db = parseDate(b.createdDate);
+    if (isNaN(da) && isNaN(db)) return 0;
+    if (isNaN(da)) return 1;
+    if (isNaN(db)) return -1;
+    return da - db;
+  };
+
+  if (sort === "created_date_desc") files.sort(cmpDateDesc);
+  else if (sort === "created_date_asc") files.sort(cmpDateAsc);
+  else if (sort === "records_desc") files.sort((a, b) => b.attachedRecordCount - a.attachedRecordCount);
+  else if (sort === "records_asc") files.sort((a, b) => a.attachedRecordCount - b.attachedRecordCount);
+  else if (sort === "file_name") files.sort((a, b) => a.fileName.localeCompare(b.fileName));
+  else if (sort === "file_id_asc") files.sort((a, b) => Number(a.fileId) - Number(b.fileId));
+  else if (sort === "file_id_desc") files.sort((a, b) => Number(b.fileId) - Number(a.fileId));
 
   const total = files.length;
   const paginated = files.slice(offset, offset + limit);

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useListAllFiles } from "@workspace/api-client-react";
-import type { ListAllFilesParams, ListAllFilesStubStatus } from "@workspace/api-client-react";
+import type { ListAllFilesParams, ListAllFilesStubStatus, ListAllFilesSort } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -58,6 +58,24 @@ export function Files() {
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="has_stub">Has Stub</SelectItem>
               <SelectItem value="missing_stub">Missing Stub</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={params.sort || "file_id_asc"}
+            onValueChange={v => setParams(p => ({ ...p, sort: v as ListAllFilesSort, offset: 0 }))}
+          >
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="file_id_asc">File ID ↑ (default)</SelectItem>
+              <SelectItem value="file_id_desc">File ID ↓</SelectItem>
+              <SelectItem value="created_date_desc">Created ↓ (newest)</SelectItem>
+              <SelectItem value="created_date_asc">Created ↑ (oldest)</SelectItem>
+              <SelectItem value="records_desc">Records ↓</SelectItem>
+              <SelectItem value="records_asc">Records ↑</SelectItem>
+              <SelectItem value="file_name">Name A–Z</SelectItem>
             </SelectContent>
           </Select>
 
