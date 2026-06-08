@@ -275,6 +275,12 @@ function RecordDetailsSheet({
                         <span>ID: <span className="font-mono">{file.fileId}</span></span>
                         <span>•</span>
                         <span>Size: {formatBytes(file.sizeBytes)}</span>
+                        {file.createdDate && (
+                          <>
+                            <span>•</span>
+                            <span>Created: <span className="font-mono">{file.createdDate}</span></span>
+                          </>
+                        )}
                       </div>
                     </div>
                     {file.isStubFile ? (

@@ -435,6 +435,8 @@ components:
           type: ["string", "null"]
         folderName:
           type: ["string", "null"]
+        createdDate:
+          type: ["string", "null"]
 
     RecordItem:
       type: object
@@ -486,6 +488,8 @@ components:
           type: boolean
         attachedRecordCount:
           type: integer
+        createdDate:
+          type: ["string", "null"]
 
     FileListResponse:
       type: object

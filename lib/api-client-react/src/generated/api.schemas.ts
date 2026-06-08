@@ -89,6 +89,8 @@ export interface AttachedFile {
   folderId?: string | null;
   /** @nullable */
   folderName?: string | null;
+  /** @nullable */
+  createdDate?: string | null;
 }
 
 export interface RecordItem {
@@ -117,6 +119,8 @@ export interface FileItem {
   sizeBytes: number;
   hasStub: boolean;
   attachedRecordCount: number;
+  /** @nullable */
+  createdDate?: string | null;
 }
 
 export interface FileListResponse {

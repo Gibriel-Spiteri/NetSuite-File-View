@@ -8,6 +8,7 @@ export interface AllFileRecord {
   fileName: string;
   folderId: string;
   folderName: string;
+  createdDate: string | null;
 }
 
 export interface RecordAttachment {
@@ -99,9 +100,12 @@ export function parseAllFiles(content: string): number {
   for (const line of lines) {
     const parts = line.split("|");
     if (parts.length < 4) continue;
-    const [fileId, fileName, folderId, folderName] = parts.map((p) => p.trim());
+    const [fileId, fileName, folderId, folderName, createdDateRaw] = parts.map((p) => p.trim());
     if (!fileId || fileId === "fileId") continue;
-    records.push({ fileId, fileName, folderId, folderName });
+    // createddate column was added 2026-06-08. Older dumps without it
+    // still parse — createdDate just lands as null.
+    const createdDate = parts.length >= 5 && createdDateRaw ? createdDateRaw : null;
+    records.push({ fileId, fileName, folderId, folderName, createdDate });
   }
 
   store.allFiles = new Map(records.map((r) => [r.fileId, r]));
@@ -359,6 +363,7 @@ export function getRecordFiles(recordType: string, recordId: string) {
       stubFileName,
       folderId: fileInfo?.folderId ?? null,
       folderName: fileInfo?.folderName ?? null,
+      createdDate: fileInfo?.createdDate ?? null,
       recordStatus: att.recordStatus,
     };
   });
@@ -394,6 +399,7 @@ export function getAllFiles(opts: {
     sizeBytes: 0,
     hasStub: stubMap.get(f.fileId) ?? false,
     attachedRecordCount: attachmentCountMap.get(f.fileId) ?? 0,
+    createdDate: f.createdDate,
   }));
 
   if (folderId) {
@@ -621,9 +627,10 @@ function streamParseAllFilesFromPath(filePath: string): Promise<AllFileRecord[]>
     rl.on("line", (line) => {
       const parts = line.split("|");
       if (parts.length < 4) return;
-      const [fileId, fileName, folderId, folderName] = parts.map((p) => p.trim());
+      const [fileId, fileName, folderId, folderName, createdDateRaw] = parts.map((p) => p.trim());
       if (!fileId || fileId === "fileId") return;
-      records.push({ fileId, fileName, folderId, folderName });
+      const createdDate = parts.length >= 5 && createdDateRaw ? createdDateRaw : null;
+      records.push({ fileId, fileName, folderId, folderName, createdDate });
     });
     rl.on("close", () => resolve(records));
     rl.on("error", reject);

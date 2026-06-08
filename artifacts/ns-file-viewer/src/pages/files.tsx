@@ -88,6 +88,7 @@ export function Files() {
                 <TableHead>File ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Folder</TableHead>
+                <TableHead>Created</TableHead>
                 <TableHead>Size</TableHead>
                 <TableHead className="text-right">Records</TableHead>
                 <TableHead className="text-center">Stub Status</TableHead>
@@ -95,15 +96,16 @@ export function Files() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading files...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading files...</TableCell></TableRow>
               ) : !data?.files.length ? (
-                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No files found matching filters.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No files found matching filters.</TableCell></TableRow>
               ) : (
                 data.files.map(file => (
                   <TableRow key={file.fileId}>
                     <TableCell className="font-mono text-xs">{file.fileId}</TableCell>
                     <TableCell className="max-w-[200px] truncate" title={file.fileName}>{file.fileName}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{file.folderName || "-"}</TableCell>
+                    <TableCell className="text-xs font-mono">{file.createdDate || "-"}</TableCell>
                     <TableCell className="text-xs">{formatBytes(file.sizeBytes)}</TableCell>
                     <TableCell className="text-right font-medium">{file.attachedRecordCount}</TableCell>
                     <TableCell className="text-center">

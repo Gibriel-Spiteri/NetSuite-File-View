@@ -101,7 +101,8 @@ export const GetRecordFilesResponseItem = zod.object({
   "recordStatus": zod.string(),
   "stubFileName": zod.string().nullish(),
   "folderId": zod.string().nullish(),
-  "folderName": zod.string().nullish()
+  "folderName": zod.string().nullish(),
+  "createdDate": zod.string().nullish()
 })
 export const GetRecordFilesResponse = zod.array(GetRecordFilesResponseItem)
 
@@ -126,7 +127,8 @@ export const ListAllFilesResponse = zod.object({
   "fileType": zod.string(),
   "sizeBytes": zod.number(),
   "hasStub": zod.boolean(),
-  "attachedRecordCount": zod.number()
+  "attachedRecordCount": zod.number(),
+  "createdDate": zod.string().nullish()
 })),
   "total": zod.number()
 })
