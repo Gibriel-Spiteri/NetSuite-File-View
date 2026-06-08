@@ -144,6 +144,8 @@ export interface FileItem {
   sizeBytes: number;
   hasStub: boolean;
   attachedRecordCount: number;
+  /** @nullable */
+  createdDate?: string | null;
 }
 
 export interface FileListResponse {
@@ -263,6 +265,7 @@ export type ListAllFilesParams = {
 folderId?: string;
 search?: string;
 stubStatus?: ListAllFilesStubStatus;
+sort?: ListAllFilesSort;
 limit?: number;
 offset?: number;
 };
@@ -274,6 +277,19 @@ export const ListAllFilesStubStatus = {
   all: 'all',
   has_stub: 'has_stub',
   missing_stub: 'missing_stub',
+} as const;
+
+export type ListAllFilesSort = typeof ListAllFilesSort[keyof typeof ListAllFilesSort];
+
+
+export const ListAllFilesSort = {
+  file_id_asc: 'file_id_asc',
+  file_id_desc: 'file_id_desc',
+  file_name: 'file_name',
+  records_desc: 'records_desc',
+  records_asc: 'records_asc',
+  created_date_desc: 'created_date_desc',
+  created_date_asc: 'created_date_asc',
 } as const;
 
 export type GetVerificationItemsParams = {

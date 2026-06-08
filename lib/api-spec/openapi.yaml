@@ -279,6 +279,12 @@ paths:
           schema:
             type: string
             enum: [all, has_stub, missing_stub]
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [file_id_asc, file_id_desc, file_name, records_desc, records_asc, created_date_desc, created_date_asc]
         - name: limit
           in: query
           required: false
@@ -616,6 +622,8 @@ components:
           type: boolean
         attachedRecordCount:
           type: integer
+        createdDate:
+          type: ["string", "null"]
 
     FileListResponse:
       type: object

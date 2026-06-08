@@ -1,6 +1,6 @@
 import { useState, Fragment } from "react";
 import { useListAllFiles, useGetFileRecords, useGetNetsuiteStatus } from "@workspace/api-client-react";
-import type { ListAllFilesParams, ListAllFilesStubStatus } from "@workspace/api-client-react";
+import type { ListAllFilesParams, ListAllFilesStubStatus, ListAllFilesSort } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -70,6 +70,7 @@ export function Files() {
     limit: 100,
     offset: 0,
     stubStatus: "all",
+    sort: "file_id_asc",
   });
   const [expandedFileId, setExpandedFileId] = useState<string | null>(null);
 
@@ -97,8 +98,8 @@ export function Files() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardContent className="p-4 flex gap-4 items-center">
-          <div className="relative flex-1 max-w-sm">
+        <CardContent className="p-4 flex gap-4 items-center flex-wrap">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search files by name or ID..."
@@ -112,13 +113,31 @@ export function Files() {
             value={params.stubStatus || "all"}
             onValueChange={v => setParams(p => ({ ...p, stubStatus: v as ListAllFilesStubStatus, offset: 0 }))}
           >
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Stub Status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="has_stub">Has Stub</SelectItem>
               <SelectItem value="missing_stub">Missing Stub</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={params.sort || "file_id_asc"}
+            onValueChange={v => setParams(p => ({ ...p, sort: v as ListAllFilesSort, offset: 0 }))}
+          >
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="file_id_asc">File ID ↑ (default)</SelectItem>
+              <SelectItem value="file_id_desc">File ID ↓</SelectItem>
+              <SelectItem value="file_name">File Name A–Z</SelectItem>
+              <SelectItem value="records_desc">Records ↓</SelectItem>
+              <SelectItem value="records_asc">Records ↑</SelectItem>
+              <SelectItem value="created_date_desc">Created ↓</SelectItem>
+              <SelectItem value="created_date_asc">Created ↑</SelectItem>
             </SelectContent>
           </Select>
 
@@ -149,6 +168,7 @@ export function Files() {
                 <TableHead>File ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Folder</TableHead>
+                <TableHead>Created</TableHead>
                 <TableHead>Size</TableHead>
                 <TableHead className="text-right">Records</TableHead>
                 <TableHead className="text-center">Stub Status</TableHead>
@@ -157,13 +177,13 @@ export function Files() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     Loading files...
                   </TableCell>
                 </TableRow>
               ) : !data?.files.length ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     No files found matching filters.
                   </TableCell>
                 </TableRow>
@@ -180,6 +200,9 @@ export function Files() {
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {file.folderName || "-"}
+                        </TableCell>
+                        <TableCell className="text-xs font-mono text-muted-foreground">
+                          {file.createdDate || "-"}
                         </TableCell>
                         <TableCell className="text-xs">{formatBytes(file.sizeBytes)}</TableCell>
                         <TableCell className="text-right">
@@ -206,7 +229,7 @@ export function Files() {
                       </TableRow>
                       {isOpen && (
                         <TableRow className="bg-muted/10 hover:bg-muted/10">
-                          <TableCell colSpan={6} className="py-0">
+                          <TableCell colSpan={7} className="py-0">
                             <div className="ml-6 border-l-2 border-primary/20 pl-4 py-3">
                               <div className="text-xs font-medium text-muted-foreground mb-2">
                                 Attached records ({file.attachedRecordCount})

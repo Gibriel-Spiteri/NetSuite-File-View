@@ -10,11 +10,11 @@ export type ListAllFilesSort = typeof ListAllFilesSort[keyof typeof ListAllFiles
 
 
 export const ListAllFilesSort = {
-  created_date_desc: 'created_date_desc',
-  created_date_asc: 'created_date_asc',
-  records_desc: 'records_desc',
-  records_asc: 'records_asc',
-  file_name: 'file_name',
   file_id_asc: 'file_id_asc',
   file_id_desc: 'file_id_desc',
+  file_name: 'file_name',
+  records_desc: 'records_desc',
+  records_asc: 'records_asc',
+  created_date_desc: 'created_date_desc',
+  created_date_asc: 'created_date_asc',
 } as const;

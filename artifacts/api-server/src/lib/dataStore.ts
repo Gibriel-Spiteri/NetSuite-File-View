@@ -538,15 +538,28 @@ export async function getAllFiles(opts: {
   folderId?: string;
   search?: string;
   stubStatus?: string;
+  sort?: string;
   limit?: number;
   offset?: number;
 }) {
-  const { folderId, search, limit = 50, offset = 0 } = opts;
+  const { folderId, search, sort, limit = 50, offset = 0 } = opts;
   const stubStatus = opts.stubStatus === "all" ? null : (opts.stubStatus ?? null);
 
-  // Fast path: when no stub filter, paginate all_files first, then join only the
-  // current page's rows for stats — avoids a 2M-row HashAggregate.
-  if (stubStatus === null) {
+  // ORDER BY expressions — two variants: with/without table alias prefix
+  const innerOrderBy = sort === "file_id_desc" ? "file_id DESC"
+    : sort === "file_id_asc" ? "CAST(file_id AS BIGINT) ASC"
+    : "file_name";
+  const outerOrderBy = sort === "file_id_desc" ? "af.file_id DESC"
+    : sort === "file_id_asc" ? "CAST(af.file_id AS BIGINT) ASC"
+    : sort === "records_desc" ? "attached_record_count DESC, af.file_name"
+    : sort === "records_asc" ? "attached_record_count ASC, af.file_name"
+    : "af.file_name";
+
+  // Fast path: when no stub filter AND not sorting by aggregated field (record count).
+  // Paginates all_files first, then joins only the current page — avoids a 2M-row HashAggregate.
+  const useFastPath = stubStatus === null && sort !== "records_desc" && sort !== "records_asc";
+
+  if (useFastPath) {
     const baseParams: (string | number | null)[] = [folderId ?? null, search ?? null];
     const whereClause = `
       ($1::text IS NULL OR folder_id = $1)
@@ -575,12 +588,12 @@ export async function getAllFiles(opts: {
           SELECT file_id, file_name, folder_id, folder_name
           FROM all_files
           WHERE ${whereClause}
-          ORDER BY file_name
+          ORDER BY ${innerOrderBy}
           LIMIT $3 OFFSET $4
         ) af
         LEFT JOIN record_attachments ra ON af.file_id = ra.file_id
         GROUP BY af.file_id, af.file_name, af.folder_id, af.folder_name
-        ORDER BY af.file_name`,
+        ORDER BY ${outerOrderBy}`,
         [...baseParams, limit, offset],
       ),
     ]);
@@ -596,6 +609,7 @@ export async function getAllFiles(opts: {
         sizeBytes: parseInt(r.size_bytes, 10),
         hasStub: r.has_stub,
         attachedRecordCount: parseInt(r.attached_record_count, 10),
+        createdDate: null,
       })),
       total,
     };
@@ -634,7 +648,7 @@ export async function getAllFiles(opts: {
     )
     SELECT *, COUNT(*) OVER() AS total_count
     FROM filtered
-    ORDER BY file_name
+    ORDER BY ${outerOrderBy}
     LIMIT $4 OFFSET $5`,
     [folderId ?? null, search ?? null, stubStatus, limit, offset],
   );
@@ -651,6 +665,7 @@ export async function getAllFiles(opts: {
       sizeBytes: parseInt(r.size_bytes, 10),
       hasStub: r.has_stub,
       attachedRecordCount: parseInt(r.attached_record_count, 10),
+      createdDate: null,
     })),
     total,
   };
